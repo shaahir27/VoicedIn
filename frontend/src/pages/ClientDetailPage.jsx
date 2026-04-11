@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, Phone, MapPin, FileText, Plus, CreditCard, Building } from 'lucide-react';
 import Card from '../components/ui/Card';
@@ -5,6 +6,7 @@ import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
 import { useInvoices } from '../context/InvoiceContext';
+import { api } from '../utils/api';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/dateHelpers';
 
@@ -12,8 +14,40 @@ export default function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { clients, getClientInvoices, getClientPayments } = useInvoices();
+  const [fetchedClient, setFetchedClient] = useState(null);
+  const [loadingClient, setLoadingClient] = useState(true);
 
-  const client = clients.find(c => c.id === id);
+  const contextClient = clients.find(c => c.id === id);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadClient() {
+      if (contextClient) {
+        setFetchedClient(contextClient);
+        setLoadingClient(false);
+        return;
+      }
+
+      try {
+        setLoadingClient(true);
+        const data = await api.get(`/clients/${id}`);
+        if (isCurrent) setFetchedClient(data.client);
+      } catch {
+        if (isCurrent) setFetchedClient(null);
+      } finally {
+        if (isCurrent) setLoadingClient(false);
+      }
+    }
+
+    loadClient();
+    return () => {
+      isCurrent = false;
+    };
+  }, [contextClient, id]);
+
+  const client = contextClient || fetchedClient;
+  if (loadingClient) return <p className="text-sm text-slate-500">Loading client...</p>;
   if (!client) return <EmptyState title="Client not found" description="This client doesn't exist" actionLabel="Back to Clients" onAction={() => navigate('/clients')} />;
 
   const clientInvoices = getClientInvoices(id);
@@ -36,13 +70,13 @@ export default function ClientDetailPage() {
               {client.name[0]}
             </div>
             <h2 className="text-lg font-bold text-slate-800">{client.name}</h2>
-            <p className="text-sm text-slate-500">{client.company}</p>
+            <p className="text-sm text-slate-500">{client.companyName || client.company}</p>
           </div>
 
           <div className="space-y-3 text-sm text-slate-600">
             <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-slate-400" />{client.email}</div>
             <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-slate-400" />{client.phone}</div>
-            <div className="flex items-center gap-2"><Building className="w-4 h-4 text-slate-400" />{client.gst}</div>
+            <div className="flex items-center gap-2"><Building className="w-4 h-4 text-slate-400" />{client.gstNumber || client.gst}</div>
             <div className="flex items-start gap-2"><MapPin className="w-4 h-4 text-slate-400 mt-0.5" />{client.address}</div>
           </div>
 

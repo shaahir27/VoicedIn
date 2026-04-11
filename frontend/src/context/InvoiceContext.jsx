@@ -16,26 +16,75 @@ export function InvoiceProvider({ children }) {
   const [chartData, setChartData] = useState([]);
   const [recentInvoices, setRecentInvoices] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [loadingData, setLoadingData] = useState(false);
+  const [dataError, setDataError] = useState(null);
+
+  const emptyStats = {
+    totalInvoices: 0, totalRevenue: 0, pendingAmount: 0, overdueAmount: 0,
+    paidCount: 0, unpaidCount: 0, overdueCount: 0, draftCount: 0
+  };
 
   const fetchData = useCallback(async () => {
-    if (!isAuthenticated) return;
-    try {
-      const [invRes, clientsRes, payRes, dashRes] = await Promise.all([
-        api.get('/invoices'),
-        api.get('/clients'),
-        api.get('/payments'),
-        api.get('/dashboard')
-      ]);
-      setInvoices(invRes.invoices || []);
-      setClients(clientsRes.clients || []);
-      setPayments(payRes.payments || []);
-      setStats(dashRes.stats || stats);
+    if (!isAuthenticated) {
+      setInvoices([]);
+      setClients([]);
+      setPayments([]);
+      setStats(emptyStats);
+      setChartData([]);
+      setRecentInvoices([]);
+      setAlerts([]);
+      setDataError(null);
+      return;
+    }
+
+    setLoadingData(true);
+    setDataError(null);
+
+    const results = await Promise.allSettled([
+      api.get('/invoices'),
+      api.get('/clients'),
+      api.get('/payments'),
+      api.get('/dashboard')
+    ]);
+
+    const [invoiceResult, clientResult, paymentResult, dashboardResult] = results;
+
+    if (invoiceResult.status === 'fulfilled') {
+      setInvoices(invoiceResult.value.invoices || []);
+    } else {
+      console.error('Failed to load invoices', invoiceResult.reason);
+      setDataError(invoiceResult.reason?.message || 'Failed to load invoices');
+    }
+
+    if (clientResult.status === 'fulfilled') {
+      setClients(clientResult.value.clients || []);
+    } else {
+      console.error('Failed to load clients', clientResult.reason);
+    }
+
+    if (paymentResult.status === 'fulfilled') {
+      setPayments(paymentResult.value.payments || []);
+    } else {
+      console.error('Failed to load payments', paymentResult.reason);
+    }
+
+    if (dashboardResult.status === 'fulfilled') {
+      const dashRes = dashboardResult.value;
+      setStats(dashRes.stats || emptyStats);
       setChartData(dashRes.chartData || []);
       setRecentInvoices(dashRes.recentInvoices || []);
       setAlerts(dashRes.alerts || []);
-    } catch (err) {
-      console.error('Failed to load invoice data', err);
+    } else {
+      console.error('Failed to load dashboard', dashboardResult.reason);
+      if (invoiceResult.status === 'fulfilled') {
+        const loadedInvoices = invoiceResult.value.invoices || [];
+        setStats(buildStatsFromInvoices(loadedInvoices));
+        setRecentInvoices([...loadedInvoices].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5));
+        setAlerts(buildAlertsFromInvoices(loadedInvoices));
+      }
     }
+
+    setLoadingData(false);
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -95,6 +144,7 @@ export function InvoiceProvider({ children }) {
     <InvoiceContext.Provider value={{
       invoices, clients, payments, stats,
       chartData, recentInvoices, alerts,
+      loadingData, dataError,
       addInvoice, updateInvoice, deleteInvoice,
       addClient, updateClient, deleteClient,
       markAsPaid,
@@ -104,6 +154,47 @@ export function InvoiceProvider({ children }) {
       {children}
     </InvoiceContext.Provider>
   );
+}
+
+function buildStatsFromInvoices(invoices) {
+  return invoices.reduce((acc, invoice) => {
+    const total = Number(invoice.total || 0);
+    acc.totalInvoices += 1;
+    if (invoice.status === 'paid') {
+      acc.paidCount += 1;
+      acc.totalRevenue += total;
+    }
+    if (invoice.status === 'unpaid') {
+      acc.unpaidCount += 1;
+      acc.pendingAmount += total;
+    }
+    if (invoice.status === 'overdue') {
+      acc.overdueCount += 1;
+      acc.overdueAmount += total;
+    }
+    if (invoice.status === 'draft') {
+      acc.draftCount += 1;
+    }
+    return acc;
+  }, {
+    totalInvoices: 0, totalRevenue: 0, pendingAmount: 0, overdueAmount: 0,
+    paidCount: 0, unpaidCount: 0, overdueCount: 0, draftCount: 0
+  });
+}
+
+function buildAlertsFromInvoices(invoices) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return invoices.filter(invoice => {
+    if (invoice.status === 'overdue') return true;
+    if (invoice.status !== 'unpaid' || !invoice.dueDate) return false;
+
+    const dueDate = new Date(invoice.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    const daysUntilDue = Math.ceil((dueDate - today) / 86400000);
+    return daysUntilDue >= 0 && daysUntilDue <= 3;
+  });
 }
 
 export function useInvoices() {

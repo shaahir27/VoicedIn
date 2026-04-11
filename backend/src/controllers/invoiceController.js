@@ -2,9 +2,8 @@ import * as invoiceService from '../services/invoiceService.js';
 import { previewNextNumber } from '../services/invoiceNumberService.js';
 import { generatePDF } from '../services/pdfService.js';
 import { transformBusinessProfile } from '../utils/transformers.js';
+import { AppError } from '../utils/errors.js';
 import pool from '../db/pool.js';
-import path from 'path';
-import fs from 'fs';
 
 export async function createInvoice(req, res, next) {
     try {
@@ -84,12 +83,51 @@ export async function generateInvoicePDF(req, res, next) {
             await pool.query('UPDATE invoices SET pdf_url = $1 WHERE id = $2', [result.pdfUrl, req.params.id]);
         }
 
-        if (result.buffer) {
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.number}.pdf"`);
-            return res.send(result.buffer);
+        if (!result.buffer) {
+            throw new AppError('PDF generation did not return a file buffer', 500);
         }
 
-        res.json({ success: true, pdfUrl: result.pdfUrl });
+        const pdfBuffer = toBuffer(result.buffer);
+        validatePdfBuffer(pdfBuffer, `Invoice ${invoice.number}`);
+        const fileName = `invoice-${safeFilePart(invoice.number || req.params.id)}.pdf`;
+
+        res.status(200);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', String(pdfBuffer.length));
+        res.setHeader('Cache-Control', 'no-store, max-age=0');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`[invoice-pdf] response invoice=${invoice.number} bytes=${pdfBuffer.length} header=${pdfBuffer.subarray(0, 5).toString('ascii')} fallback=${Boolean(result.fallback)}`);
+        }
+
+        return res.end(pdfBuffer);
     } catch (err) { next(err); }
+}
+
+function safeFilePart(value) {
+    return String(value || Date.now()).replace(/[^a-zA-Z0-9._-]/g, '-');
+}
+
+function toBuffer(value) {
+    if (Buffer.isBuffer(value)) {
+        return value;
+    }
+    if (value instanceof Uint8Array || ArrayBuffer.isView(value)) {
+        return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    }
+    if (value instanceof ArrayBuffer) {
+        return Buffer.from(value);
+    }
+    throw new AppError('PDF generator returned an unsupported binary type', 500);
+}
+
+function validatePdfBuffer(buffer, label) {
+    if (!buffer.length) {
+        throw new AppError(`${label} PDF is empty`, 500);
+    }
+    if (buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
+        throw new AppError(`${label} PDF is invalid`, 500);
+    }
 }

@@ -31,15 +31,19 @@ export async function createInvoice(userId, data, isDemo = false) {
     const total = subtotal + taxTotal;
 
     const status = data.isDraft ? 'draft' : (data.status || 'unpaid');
+    const company = data.company || data.companyName || data.company_name || '';
+    const clientCompanyName = data.clientCompanyName || data.companyName || data.company_name || company || '';
+    const clientGstNumber = data.clientGstNumber || data.gstNumber || data.gst_number || '';
+    const clientAddress = data.clientAddress || data.address || '';
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
         const { rows } = await client.query(
-            `INSERT INTO invoices (user_id, client_id, number, client_name, company, status, date, due_date, subtotal, tax_total, total, notes, terms, template, currency, is_draft)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
-            [userId, data.clientId || null, number, data.clientName, data.company || '', status, data.date, data.dueDate || null, subtotal, taxTotal, total, data.notes || '', data.terms || '', data.template || 'modern', data.currency || 'INR', data.isDraft || false]
+            `INSERT INTO invoices (user_id, client_id, number, client_name, company, client_company_name, client_gst_number, client_address, status, date, due_date, subtotal, tax_total, total, notes, terms, template, currency, is_draft)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING *`,
+            [userId, data.clientId || null, number, data.clientName, company, clientCompanyName, clientGstNumber, clientAddress, status, data.date, data.dueDate || null, subtotal, taxTotal, total, data.notes || '', data.terms || '', data.template || 'modern', data.currency || 'INR', data.isDraft || false]
         );
         const invoice = rows[0];
 
@@ -120,19 +124,22 @@ export async function updateInvoice(userId, invoiceId, data) {
          client_id = COALESCE($1, client_id),
          client_name = COALESCE($2, client_name),
          company = COALESCE($3, company),
-         status = COALESCE($4, status),
-         date = COALESCE($5, date),
-         due_date = COALESCE($6, due_date),
-         paid_date = COALESCE($7, paid_date),
-         subtotal = COALESCE($8, subtotal),
-         tax_total = COALESCE($9, tax_total),
-         total = COALESCE($10, total),
-         notes = COALESCE($11, notes),
-         terms = COALESCE($12, terms),
-         template = COALESCE($13, template),
-         is_draft = COALESCE($14, is_draft)
-       WHERE id = $15 AND user_id = $16 RETURNING *`,
-            [data.clientId, data.clientName, data.company, data.status, data.date, data.dueDate, data.paidDate, subtotal, taxTotal, total, data.notes, data.terms, data.template, data.isDraft, invoiceId, userId]
+         client_company_name = COALESCE($4, client_company_name),
+         client_gst_number = COALESCE($5, client_gst_number),
+         client_address = COALESCE($6, client_address),
+         status = COALESCE($7, status),
+         date = COALESCE($8, date),
+         due_date = COALESCE($9, due_date),
+         paid_date = COALESCE($10, paid_date),
+         subtotal = COALESCE($11, subtotal),
+         tax_total = COALESCE($12, tax_total),
+         total = COALESCE($13, total),
+         notes = COALESCE($14, notes),
+         terms = COALESCE($15, terms),
+         template = COALESCE($16, template),
+         is_draft = COALESCE($17, is_draft)
+       WHERE id = $18 AND user_id = $19 RETURNING *`,
+            [data.clientId, data.clientName, data.company, data.clientCompanyName, data.clientGstNumber, data.clientAddress, data.status, data.date, data.dueDate, data.paidDate, subtotal, taxTotal, total, data.notes, data.terms, data.template, data.isDraft, invoiceId, userId]
         );
         if (rows.length === 0) throw new NotFoundError('Invoice');
 
@@ -148,7 +155,10 @@ export async function updateInvoice(userId, invoiceId, data) {
 
 export async function getInvoice(userId, invoiceId) {
     const { rows } = await pool.query(
-        'SELECT * FROM invoices WHERE id = $1 AND user_id = $2',
+        `SELECT i.*, c.company_name AS client_company_name, c.gst_number AS client_gst_number, c.address AS client_address
+         FROM invoices i
+         LEFT JOIN clients c ON c.id = i.client_id
+         WHERE i.id = $1 AND i.user_id = $2`,
         [invoiceId, userId]
     );
     if (rows.length === 0) throw new NotFoundError('Invoice');
@@ -164,34 +174,39 @@ export async function getInvoice(userId, invoiceId) {
 }
 
 export async function listInvoices(userId, filters = {}) {
-    let query = 'SELECT * FROM invoices WHERE user_id = $1';
+    let query = `
+      SELECT i.*, c.company_name AS client_company_name, c.gst_number AS client_gst_number, c.address AS client_address
+      FROM invoices i
+      LEFT JOIN clients c ON c.id = i.client_id
+      WHERE i.user_id = $1
+    `;
     const params = [userId];
     let paramIdx = 2;
 
     if (filters.status) {
-        query += ` AND status = $${paramIdx++}`;
+        query += ` AND i.status = $${paramIdx++}`;
         params.push(filters.status);
     }
     if (filters.clientId) {
-        query += ` AND client_id = $${paramIdx++}`;
+        query += ` AND i.client_id = $${paramIdx++}`;
         params.push(filters.clientId);
     }
     if (filters.dateFrom) {
-        query += ` AND date >= $${paramIdx++}`;
+        query += ` AND i.date >= $${paramIdx++}`;
         params.push(filters.dateFrom);
     }
     if (filters.dateTo) {
-        query += ` AND date <= $${paramIdx++}`;
+        query += ` AND i.date <= $${paramIdx++}`;
         params.push(filters.dateTo);
     }
     if (filters.search) {
-        query += ` AND (number ILIKE $${paramIdx} OR client_name ILIKE $${paramIdx})`;
+        query += ` AND (i.number ILIKE $${paramIdx} OR i.client_name ILIKE $${paramIdx} OR c.company_name ILIKE $${paramIdx} OR c.gst_number ILIKE $${paramIdx} OR c.address ILIKE $${paramIdx})`;
         params.push(`%${filters.search}%`);
         paramIdx++;
     }
 
     // Auto-detect overdue
-    query += ` ORDER BY ${filters.sort === 'amount' ? 'total' : filters.sort === 'client' ? 'client_name' : 'date'} ${filters.order === 'asc' ? 'ASC' : 'DESC'}`;
+    query += ` ORDER BY ${filters.sort === 'amount' ? 'i.total' : filters.sort === 'client' ? 'i.client_name' : 'i.date'} ${filters.order === 'asc' ? 'ASC' : 'DESC'}`;
 
     // Pagination
     const page = parseInt(filters.page) || 1;
@@ -257,6 +272,9 @@ export async function duplicateInvoice(userId, invoiceId) {
         clientId: original.clientId,
         clientName: original.clientName,
         company: original.company,
+        clientCompanyName: original.clientCompanyName,
+        clientGstNumber: original.clientGstNumber,
+        clientAddress: original.clientAddress,
         date: new Date().toISOString().split('T')[0],
         dueDate: null,
         items: original.items.map(i => ({ description: i.description, qty: i.qty, rate: i.rate, tax: i.tax })),
@@ -271,7 +289,10 @@ export async function duplicateInvoice(userId, invoiceId) {
 
 export async function getLastInvoiceForClient(userId, clientId) {
     const { rows } = await pool.query(
-        `SELECT * FROM invoices WHERE user_id = $1 AND client_id = $2 ORDER BY created_at DESC LIMIT 1`,
+        `SELECT i.*, c.company_name AS client_company_name, c.gst_number AS client_gst_number, c.address AS client_address
+         FROM invoices i
+         LEFT JOIN clients c ON c.id = i.client_id
+         WHERE i.user_id = $1 AND i.client_id = $2 ORDER BY i.created_at DESC LIMIT 1`,
         [userId, clientId]
     );
     if (rows.length === 0) return null;

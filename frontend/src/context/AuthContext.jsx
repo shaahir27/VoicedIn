@@ -8,13 +8,18 @@ export function AuthProvider({ children }) {
   const [isDemo, setIsDemo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const resolveIsDemo = (account) => {
+    const status = account?.plan || account?.subscriptionStatus || account?.subscription_status || '';
+    return status === 'demo' || status.includes('demo');
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       api.get('/users/me')
         .then(data => {
           setUser(data.user);
-          setIsDemo(data.user.subscriptionStatus === 'demo' || data.user.subscriptionStatus?.includes('demo'));
+          setIsDemo(resolveIsDemo(data.user));
         })
         .catch(() => {
           localStorage.removeItem('token');
@@ -25,11 +30,18 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const refreshUser = async () => {
+    const data = await api.get('/users/me');
+    setUser(data.user);
+    setIsDemo(resolveIsDemo(data.user));
+    return data.user;
+  };
+
   const login = async (email, password) => {
     const data = await api.post('/auth/login', { email, password });
     localStorage.setItem('token', data.token);
     setUser(data.user);
-    setIsDemo(data.user.subscriptionStatus === 'demo' || data.user.subscriptionStatus?.includes('demo'));
+    setIsDemo(resolveIsDemo(data.user));
   };
 
   const loginDemo = async () => {
@@ -48,14 +60,14 @@ export function AuthProvider({ children }) {
     const data = await api.post('/auth/signup', { name, email, password });
     localStorage.setItem('token', data.token);
     setUser(data.user);
-    setIsDemo(true);
+    setIsDemo(resolveIsDemo(data.user));
   };
 
   const loginWithGoogle = async (idToken) => {
     const data = await api.post('/auth/google', { idToken });
     localStorage.setItem('token', data.token);
     setUser(data.user);
-    setIsDemo(data.user.plan === 'demo' || data.user.subscriptionStatus === 'demo');
+    setIsDemo(resolveIsDemo(data.user));
   };
 
   const forgotPassword = async (email) => {
@@ -69,7 +81,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isDemo, isLoading, login, loginDemo, loginWithGoogle, forgotPassword, signup, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, isDemo, isLoading, login, loginDemo, loginWithGoogle, forgotPassword, signup, logout, refreshUser, isAuthenticated: !!user }}>
       {!isLoading && children}
     </AuthContext.Provider>
   );

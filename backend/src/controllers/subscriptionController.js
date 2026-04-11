@@ -23,8 +23,14 @@ export async function createCheckout(req, res, next) {
 
 export async function handleWebhook(req, res, next) {
     try {
-        const signature = req.headers['x-webhook-signature'] || req.headers['x-dodo-signature'] || '';
-        await subscriptionService.handleWebhook(req.body, signature);
+        await subscriptionService.handleWebhook();
         res.json({ received: true });
+    } catch (err) { next(err); }
+}
+
+export async function createPaymentRequest(req, res, next) {
+    try {
+        const result = await subscriptionService.createPaymentRequest(req.user.id);
+        res.status(result.request ? 201 : 200).json({ success: true, ...result });
     } catch (err) { next(err); }
 }

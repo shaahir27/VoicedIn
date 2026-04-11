@@ -18,6 +18,8 @@ import TemplatesPage from './pages/TemplatesPage';
 import ExportPage from './pages/ExportPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import SettingsPage from './pages/SettingsPage';
+import SharedInvoicesPage from './pages/SharedInvoicesPage';
+import GodmodePage from './pages/GodmodePage';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -34,6 +36,8 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/share/:token" element={<SharedInvoicesPage />} />
+      <Route path="/godmode" element={<GodmodePage />} />
 
       {/* Protected routes */}
       <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

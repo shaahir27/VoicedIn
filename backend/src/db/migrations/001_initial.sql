@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS business_profiles (
   default_terms TEXT DEFAULT 'Payment is due within 15 days of issue.',
   default_template VARCHAR(20) DEFAULT 'modern',
   tax_rate DECIMAL(5,2) DEFAULT 18.00,
+  bank_account_name VARCHAR(255) DEFAULT '',
+  bank_name VARCHAR(255) DEFAULT '',
+  bank_account_number VARCHAR(64) DEFAULT '',
+  bank_ifsc VARCHAR(32) DEFAULT '',
+  bank_upi VARCHAR(255) DEFAULT '',
+  include_bank_details BOOLEAN DEFAULT false,
   timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -52,6 +58,8 @@ CREATE TABLE IF NOT EXISTS clients (
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255),
   phone VARCHAR(30),
+  company_name VARCHAR(255),
+  gst_number VARCHAR(20),
   company VARCHAR(255),
   gst VARCHAR(20),
   address TEXT,
@@ -68,6 +76,9 @@ CREATE TABLE IF NOT EXISTS invoices (
   number VARCHAR(30) NOT NULL,
   client_name VARCHAR(255) NOT NULL,
   company VARCHAR(255) DEFAULT '',
+  client_company_name VARCHAR(255),
+  client_gst_number VARCHAR(20),
+  client_address TEXT,
   status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'unpaid', 'paid', 'overdue')),
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   due_date DATE,
@@ -144,6 +155,19 @@ CREATE TABLE IF NOT EXISTS billing_payments (
 );
 
 -- ─── Share Links ───
+CREATE TABLE IF NOT EXISTS premium_payment_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount DECIMAL(8,2) NOT NULL DEFAULT 99,
+  currency VARCHAR(5) DEFAULT 'INR',
+  upi_id VARCHAR(255),
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  note TEXT,
+  requested_at TIMESTAMPTZ DEFAULT NOW(),
+  approved_at TIMESTAMPTZ,
+  approved_by VARCHAR(255)
+);
+
 CREATE TABLE IF NOT EXISTS share_links (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -151,6 +175,7 @@ CREATE TABLE IF NOT EXISTS share_links (
   date_from DATE,
   date_to DATE,
   client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  invoice_id UUID REFERENCES invoices(id) ON DELETE CASCADE,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   expires_at TIMESTAMPTZ
@@ -182,9 +207,14 @@ CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices(date);
 CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_clients_company ON clients(company);
+CREATE INDEX IF NOT EXISTS idx_clients_company_name ON clients(company_name);
+CREATE INDEX IF NOT EXISTS idx_clients_gst_number ON clients(gst_number);
 CREATE INDEX IF NOT EXISTS idx_payment_records_invoice_id ON payment_records(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_payment_records_user_id ON payment_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_premium_payment_requests_status ON premium_payment_requests(status);
+CREATE INDEX IF NOT EXISTS idx_premium_payment_requests_user_id ON premium_payment_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token);
+CREATE INDEX IF NOT EXISTS idx_share_links_invoice_id ON share_links(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_business_profiles_user_id ON business_profiles(user_id);
 

@@ -14,6 +14,8 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { generateInvoiceNumber } from '../utils/generateInvoiceNumber';
 import { formatDate, formatDateISO } from '../utils/dateHelpers';
 import { templates } from '../data/templates';
+import { downloadInvoicePdf } from '../utils/downloadInvoicePdf';
+import { api } from '../utils/api';
 
 const emptyItem = { description: '', qty: 1, rate: 0, tax: 18 };
 
@@ -26,21 +28,27 @@ export default function CreateInvoicePage() {
   const [clientSearch, setClientSearch] = useState('');
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
+  const [clientCompanyName, setClientCompanyName] = useState('');
+  const [clientGstNumber, setClientGstNumber] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
   const [invoiceNumber] = useState(generateInvoiceNumber);
   const [invoiceDate, setInvoiceDate] = useState(formatDateISO(new Date()));
-  const [dueDate, setDueDate] = useState(formatDateISO(new Date(Date.now() + 15 * 86400000)));
+  const [dueDate, setDueDate] = useState(() => formatDateISO(new Date(Date.now() + 15 * 86400000)));
   const [items, setItems] = useState([{ ...emptyItem }]);
   const [notes, setNotes] = useState('Thank you for your business!');
   const [template, setTemplate] = useState('modern');
 
   const filteredClients = clients.filter(c =>
     c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-    c.company.toLowerCase().includes(clientSearch.toLowerCase())
+    (c.companyName || c.company || '').toLowerCase().includes(clientSearch.toLowerCase())
   );
 
   const selectClient = (client) => {
     setSelectedClient(client);
     setClientSearch(client.name);
+    setClientCompanyName(client.companyName || client.company || '');
+    setClientGstNumber(client.gstNumber || client.gst || '');
+    setClientAddress(client.address || '');
     setShowClientSuggestions(false);
   };
 
@@ -69,11 +77,18 @@ export default function CreateInvoicePage() {
     }
   };
 
-  const handleSave = async (status = 'draft') => {
+  const saveInvoice = async (status = 'draft') => {
+    const resolvedCompany = selectedClient?.companyName || selectedClient?.company || clientCompanyName;
+    const resolvedGstNumber = selectedClient?.gstNumber || selectedClient?.gst || clientGstNumber;
+    const resolvedAddress = selectedClient?.address || clientAddress;
+
     const invoice = {
       clientId: selectedClient?.id || '',
       clientName: selectedClient?.name || clientSearch,
-      company: selectedClient?.company || '',
+      company: resolvedCompany,
+      clientCompanyName: resolvedCompany,
+      clientGstNumber: resolvedGstNumber,
+      clientAddress: resolvedAddress,
       status,
       date: invoiceDate,
       dueDate,
@@ -82,12 +97,51 @@ export default function CreateInvoicePage() {
       template,
     };
 
+    return await addInvoice(invoice);
+  };
+
+  const handleSaveDraft = async () => {
     try {
-      await addInvoice(invoice);
-      showToast(status === 'draft' ? 'Invoice saved as draft' : 'Invoice created successfully!');
+      await saveInvoice('draft');
+      showToast('Invoice saved as draft');
       navigate('/invoices');
     } catch (err) {
       showToast(err.message || 'Failed to create invoice', 'error');
+    }
+  };
+
+  const handleGenerateInvoice = async () => {
+    try {
+      await saveInvoice('unpaid');
+      showToast('Invoice created successfully!');
+      navigate('/invoices');
+    } catch (err) {
+      showToast(err.message || 'Failed to create invoice', 'error');
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      const invoice = await saveInvoice('unpaid');
+      await downloadInvoicePdf(invoice.id, invoice.number);
+      showToast('PDF downloaded!');
+      navigate('/invoices');
+    } catch (err) {
+      showToast(err.message || 'Failed to download PDF', 'error');
+    }
+  };
+
+  const handleCreateShareLink = async () => {
+    try {
+      const invoice = await saveInvoice('unpaid');
+      const data = await api.post('/share-links', { invoiceId: invoice.id });
+      const path = data.url || `/share/${data.token}`;
+      const link = path.startsWith('http') ? path : `${window.location.origin}${path}`;
+      await navigator.clipboard.writeText(link);
+      showToast('Invoice link copied!');
+      navigate('/invoices');
+    } catch (err) {
+      showToast(err.message || 'Failed to create share link', 'error');
     }
   };
 
@@ -108,8 +162,8 @@ export default function CreateInvoicePage() {
           <Button variant="ghost" size="sm" onClick={() => setShowPreview(!showPreview)} icon={showPreview ? EyeOff : Eye}>
             {showPreview ? 'Hide' : 'Preview'}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleSave('draft')} icon={Save}>Save Draft</Button>
-          <Button size="sm" onClick={() => handleSave('unpaid')} icon={FileText}>Generate</Button>
+          <Button variant="outline" size="sm" onClick={handleSaveDraft} icon={Save}>Save Draft</Button>
+          <Button size="sm" onClick={handleGenerateInvoice} icon={FileText}>Generate</Button>
         </div>
       </div>
 
@@ -120,15 +174,22 @@ export default function CreateInvoicePage() {
           <Card>
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Client Details</h3>
             <div className="relative mb-4">
-              <Input
-                label="Client Name"
-                placeholder="Search or enter client name..."
-                icon={User}
-                value={clientSearch}
-                onChange={e => { setClientSearch(e.target.value); setShowClientSuggestions(true); setSelectedClient(null); }}
-                onFocus={() => setShowClientSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
-              />
+                <Input
+                  label="Client Name"
+                  placeholder="Search or enter client name..."
+                  icon={User}
+                  value={clientSearch}
+                onChange={e => {
+                  setClientSearch(e.target.value);
+                  setShowClientSuggestions(true);
+                  setSelectedClient(null);
+                  setClientCompanyName('');
+                  setClientGstNumber('');
+                  setClientAddress('');
+                }}
+                  onFocus={() => setShowClientSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
+                />
               {showClientSuggestions && clientSearch && filteredClients.length > 0 && (
                 <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white rounded-xl border border-slate-200 shadow-lg max-h-48 overflow-y-auto">
                   {filteredClients.map(c => (
@@ -138,7 +199,7 @@ export default function CreateInvoicePage() {
                       className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-50 last:border-0"
                     >
                       <p className="text-sm font-medium text-slate-800">{c.name}</p>
-                      <p className="text-xs text-slate-400">{c.company}</p>
+                      <p className="text-xs text-slate-400">{c.companyName || c.company}</p>
                     </button>
                   ))}
                 </div>
@@ -147,13 +208,25 @@ export default function CreateInvoicePage() {
 
             {selectedClient && (
               <div className="bg-slate-50 rounded-xl p-3 space-y-1 text-sm animate-fade-in">
-                <p className="text-slate-600"><span className="text-slate-400 text-xs">Company:</span> {selectedClient.company}</p>
+                <p className="text-slate-600"><span className="text-slate-400 text-xs">Company:</span> {selectedClient.companyName || selectedClient.company}</p>
                 <p className="text-slate-600"><span className="text-slate-400 text-xs">Email:</span> {selectedClient.email}</p>
-                <p className="text-slate-600"><span className="text-slate-400 text-xs">GST:</span> {selectedClient.gst}</p>
+                <p className="text-slate-600"><span className="text-slate-400 text-xs">GST:</span> {selectedClient.gstNumber || selectedClient.gst}</p>
                 <p className="text-slate-600"><span className="text-slate-400 text-xs">Address:</span> {selectedClient.address}</p>
                 <Button variant="ghost" size="sm" onClick={reuseLastInvoice} icon={Copy} className="mt-2">
                   Reuse Last Invoice
                 </Button>
+              </div>
+            )}
+
+            {!selectedClient && (
+              <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-amber-900">New Client Details</h4>
+                  <p className="text-xs text-amber-700">Fill these only if the client is not already saved.</p>
+                </div>
+                <Input label="Company Name" value={clientCompanyName} onChange={e => setClientCompanyName(e.target.value)} placeholder="Company name" />
+                <Input label="GST Number" value={clientGstNumber} onChange={e => setClientGstNumber(e.target.value)} placeholder="22AAAAA0000A1Z5" />
+                <Input label="Address" value={clientAddress} onChange={e => setClientAddress(e.target.value)} placeholder="Full address" />
               </div>
             )}
           </Card>
@@ -254,10 +327,10 @@ export default function CreateInvoicePage() {
 
           {/* Actions */}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => handleSave('draft')} variant="outline" icon={Save}>Save Draft</Button>
-            <Button onClick={() => handleSave('unpaid')} icon={FileText}>Generate Invoice</Button>
-            <Button onClick={() => { handleSave('unpaid'); showToast('PDF downloaded!'); }} variant="secondary" icon={Download}>Download PDF</Button>
-            <Button onClick={() => { showToast('Share link copied!'); }} variant="ghost" icon={Share2}>Share</Button>
+            <Button onClick={handleSaveDraft} variant="outline" icon={Save}>Save Draft</Button>
+            <Button onClick={handleGenerateInvoice} icon={FileText}>Generate Invoice</Button>
+            <Button onClick={handleDownloadPdf} variant="secondary" icon={Download}>Download PDF</Button>
+            <Button onClick={handleCreateShareLink} variant="ghost" icon={Share2}>Share</Button>
           </div>
         </div>
 
@@ -291,9 +364,10 @@ export default function CreateInvoicePage() {
                   <div className="mb-8 p-4 bg-slate-50 rounded-xl">
                     <p className="text-xs font-medium text-slate-400 mb-1">BILL TO</p>
                     <p className="text-sm font-semibold text-slate-800">{selectedClient?.name || clientSearch || 'Client Name'}</p>
-                    <p className="text-xs text-slate-500">{selectedClient?.company || ''}</p>
+                    <p className="text-xs text-slate-500">{selectedClient?.companyName || selectedClient?.company || clientCompanyName || ''}</p>
                     <p className="text-xs text-slate-400">{selectedClient?.email || ''}</p>
-                    {selectedClient?.gst && <p className="text-xs text-slate-400">GST: {selectedClient.gst}</p>}
+                    {selectedClient?.gstNumber || selectedClient?.gst || clientGstNumber ? <p className="text-xs text-slate-400">GST: {selectedClient?.gstNumber || selectedClient?.gst || clientGstNumber}</p> : null}
+                    {selectedClient?.address || clientAddress ? <p className="text-xs text-slate-400">{selectedClient?.address || clientAddress}</p> : null}
                   </div>
 
                   {/* Items table */}

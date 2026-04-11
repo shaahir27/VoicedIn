@@ -33,7 +33,7 @@ async function start() {
     app.listen(config.port, () => {
         console.log(`\n🚀 VoicedIn API running at http://localhost:${config.port}`);
         console.log(`   Environment: ${config.nodeEnv}`);
-        console.log(`   Frontend URL: ${config.frontendUrl}\n`);
+        console.log(`   Frontend URLs: ${config.frontendUrls.join(', ')}\n`);
     });
 }
 

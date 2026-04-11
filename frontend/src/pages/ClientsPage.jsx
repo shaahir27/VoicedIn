@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Mail, Phone, FileText, ArrowRight } from 'lucide-react';
+import { Plus, Mail, Phone, FileText } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import SearchInput from '../components/ui/SearchInput';
@@ -16,19 +16,19 @@ export default function ClientsPage() {
   const { showToast } = useApp();
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', company: '', gst: '', address: '' });
+  const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', companyName: '', gstNumber: '', address: '' });
 
   const filtered = clients.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.company.toLowerCase().includes(search.toLowerCase()) ||
-    c.email.toLowerCase().includes(search.toLowerCase())
+    (c.companyName || c.company || '').toLowerCase().includes(search.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const handleAddClient = async () => {
     try {
       await addClient(newClient);
       setShowAddModal(false);
-      setNewClient({ name: '', email: '', phone: '', company: '', gst: '', address: '' });
+      setNewClient({ name: '', email: '', phone: '', companyName: '', gstNumber: '', address: '' });
       showToast('Client added successfully!');
     } catch (err) {
       showToast('Failed to add client', 'error');
@@ -65,12 +65,13 @@ export default function ClientsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-800 truncate">{client.name}</p>
-                    <p className="text-xs text-slate-400 truncate">{client.company}</p>
+                    <p className="text-xs text-slate-400 truncate">{client.companyName || client.company}</p>
                   </div>
                 </div>
                 <div className="space-y-1.5 text-xs text-slate-500 mb-4">
                   <div className="flex items-center gap-1.5"><Mail className="w-3 h-3" />{client.email}</div>
                   <div className="flex items-center gap-1.5"><Phone className="w-3 h-3" />{client.phone}</div>
+                  <div className="flex items-center gap-1.5"><FileText className="w-3 h-3" />{client.gstNumber || client.gst}</div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100">
                   <div>
@@ -98,12 +99,12 @@ export default function ClientsPage() {
       <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add New Client" size="md">
         <div className="space-y-4">
           <Input label="Full Name" value={newClient.name} onChange={e => setNewClient({ ...newClient, name: e.target.value })} placeholder="Client name" required />
-          <Input label="Company" value={newClient.company} onChange={e => setNewClient({ ...newClient, company: e.target.value })} placeholder="Company name" />
+          <Input label="Company Name" value={newClient.companyName} onChange={e => setNewClient({ ...newClient, companyName: e.target.value })} placeholder="Company name" />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Email" type="email" value={newClient.email} onChange={e => setNewClient({ ...newClient, email: e.target.value })} placeholder="email@example.com" />
             <Input label="Phone" value={newClient.phone} onChange={e => setNewClient({ ...newClient, phone: e.target.value })} placeholder="+91 98765 43210" />
           </div>
-          <Input label="GST Number" value={newClient.gst} onChange={e => setNewClient({ ...newClient, gst: e.target.value })} placeholder="22AAAAA0000A1Z5" />
+          <Input label="GST Number" value={newClient.gstNumber} onChange={e => setNewClient({ ...newClient, gstNumber: e.target.value })} placeholder="22AAAAA0000A1Z5" />
           <Input label="Address" value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} placeholder="Full address" />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancel</Button>

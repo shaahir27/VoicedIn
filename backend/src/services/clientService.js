@@ -1,7 +1,15 @@
 import pool from '../db/pool.js';
 import { transformClient } from '../utils/transformers.js';
-import { NotFoundError, ValidationError } from '../utils/errors.js';
+import { NotFoundError } from '../utils/errors.js';
 import { validateRequired } from '../utils/validators.js';
+
+function pickClientCompany(data) {
+    return data.companyName ?? data.company_name ?? data.company ?? null;
+}
+
+function pickClientGst(data) {
+    return data.gstNumber ?? data.gst_number ?? data.gst ?? null;
+}
 
 export async function listClients(userId, { search } = {}) {
     let query = `
@@ -23,7 +31,14 @@ export async function listClients(userId, { search } = {}) {
 
     if (search) {
         params.push(`%${search}%`);
-        query += ` AND (c.name ILIKE $${params.length} OR c.company ILIKE $${params.length} OR c.email ILIKE $${params.length})`;
+        query += ` AND (
+          c.name ILIKE $${params.length}
+          OR c.company_name ILIKE $${params.length}
+          OR c.company ILIKE $${params.length}
+          OR c.gst_number ILIKE $${params.length}
+          OR c.gst ILIKE $${params.length}
+          OR c.email ILIKE $${params.length}
+        )`;
     }
 
     query += ' ORDER BY c.created_at DESC';
@@ -54,26 +69,57 @@ export async function getClient(userId, clientId) {
 
 export async function createClient(userId, data) {
     validateRequired(['name'], data);
+    const company = pickClientCompany(data);
+    const gst = pickClientGst(data);
+
     const { rows } = await pool.query(
-        `INSERT INTO clients (user_id, name, email, phone, company, gst, address, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [userId, data.name, data.email || null, data.phone || null, data.company || null, data.gst || null, data.address || null, data.notes || null]
+        `INSERT INTO clients (user_id, name, email, phone, company_name, gst_number, company, gst, address, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [
+            userId,
+            data.name,
+            data.email || null,
+            data.phone || null,
+            company,
+            gst,
+            company,
+            gst,
+            data.address || null,
+            data.notes || null,
+        ]
     );
     return transformClient({ ...rows[0], total_invoices: 0, total_revenue: 0, outstanding: 0 });
 }
 
 export async function updateClient(userId, clientId, data) {
+    const company = pickClientCompany(data);
+    const gst = pickClientGst(data);
+
     const { rows } = await pool.query(
         `UPDATE clients SET
        name = COALESCE($1, name),
        email = COALESCE($2, email),
        phone = COALESCE($3, phone),
-       company = COALESCE($4, company),
-       gst = COALESCE($5, gst),
-       address = COALESCE($6, address),
-       notes = COALESCE($7, notes)
-     WHERE id = $8 AND user_id = $9 RETURNING *`,
-        [data.name, data.email, data.phone, data.company, data.gst, data.address, data.notes, clientId, userId]
+       company_name = COALESCE($4, company_name),
+       gst_number = COALESCE($5, gst_number),
+       company = COALESCE($6, company),
+       gst = COALESCE($7, gst),
+       address = COALESCE($8, address),
+       notes = COALESCE($9, notes)
+     WHERE id = $10 AND user_id = $11 RETURNING *`,
+        [
+            data.name,
+            data.email,
+            data.phone,
+            company,
+            gst,
+            company,
+            gst,
+            data.address,
+            data.notes,
+            clientId,
+            userId,
+        ]
     );
     if (rows.length === 0) throw new NotFoundError('Client');
     return transformClient(rows[0]);
@@ -87,10 +133,12 @@ export async function deleteClient(userId, clientId) {
 
 export async function autocompleteClients(userId, query) {
     const { rows } = await pool.query(
-        `SELECT id, name, company, email, phone, gst, address
-     FROM clients WHERE user_id = $1 AND (name ILIKE $2 OR company ILIKE $2)
+        `SELECT id, name, company_name, gst_number, company, gst, email, phone, address
+     FROM clients WHERE user_id = $1 AND (
+       name ILIKE $2 OR company_name ILIKE $2 OR company ILIKE $2 OR gst_number ILIKE $2 OR gst ILIKE $2
+     )
      ORDER BY name LIMIT 10`,
         [userId, `%${query}%`]
     );
-    return rows;
+    return rows.map(transformClient);
 }

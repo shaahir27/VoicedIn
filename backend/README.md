@@ -11,6 +11,7 @@ npm install
 # 2. Set up environment variables
 cp .env.example .env
 # Edit .env with your DATABASE_URL, JWT_SECRET, etc.
+# If PDF generation cannot launch a browser, set PUPPETEER_EXECUTABLE_PATH to Chrome or Chromium.
 
 # 3. Create database
 createdb voicedin
@@ -25,6 +26,20 @@ psql -d voicedin -f src/db/seed.sql
 # 6. Start server
 npm run dev
 ```
+
+## Static Premium Payment
+
+The app uses a static QR payment flow instead of a payment provider checkout. Configure these values in `.env`:
+
+```env
+PREMIUM_PAYMENT_AMOUNT=99
+PREMIUM_PAYMENT_UPI_ID=your-upi-id@bank
+PREMIUM_PAYMENT_PAYEE_NAME=Your Name
+PREMIUM_PAYMENT_QR_URL=/premium-payment-qr.svg
+PREMIUM_PAYMENT_NOTE=Send payment screenshot after scanning the QR. Premium is activated after confirmation.
+```
+
+Premium activation is manual: after confirming payment, update the user's subscription/user status in the database.
 
 ## Tech Stack
 - **Runtime**: Node.js (ES modules)
@@ -71,8 +86,8 @@ npm run dev
 | GET | `/api/share-links/:token` | Public collection view |
 | GET | `/api/subscription` | Current subscription |
 | GET | `/api/subscription/billing-history` | Billing history |
-| POST | `/api/subscription/checkout` | Dodo checkout |
-| POST | `/api/subscription/webhook` | Payment webhook |
+| POST | `/api/subscription/checkout` | Static QR payment instructions |
+| POST | `/api/subscription/webhook` | Legacy no-op webhook |
 | GET | `/api/settings` | Get all settings |
 | PUT | `/api/settings/tax` | Update tax settings |
 | PUT | `/api/settings/invoice` | Update invoice prefs |

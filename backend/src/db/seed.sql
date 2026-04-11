@@ -44,13 +44,13 @@ VALUES ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 10)
 ON CONFLICT (user_id) DO NOTHING;
 
 -- ─── Clients ───
-INSERT INTO clients (id, user_id, name, email, phone, company, gst, address, created_at) VALUES
-  ('c1000001-0000-0000-0000-000000000001', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Priya Sharma', 'priya@designstudio.in', '+91 98765 43210', 'Sharma Design Studio', '27AADCS1234F1Z5', '412, Bandra West, Mumbai, Maharashtra 400050', '2025-08-15'),
-  ('c1000001-0000-0000-0000-000000000002', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Rahul Mehta', 'rahul@techsolutions.com', '+91 87654 32109', 'TechSolutions Pvt Ltd', '29AABCT5678H1Z3', '56, Koramangala, Bengaluru, Karnataka 560034', '2025-06-20'),
-  ('c1000001-0000-0000-0000-000000000003', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Ananya Reddy', 'ananya@contentcraft.io', '+91 76543 21098', 'ContentCraft Media', '36AABCC9012K1Z1', '78, Jubilee Hills, Hyderabad, Telangana 500033', '2025-10-01'),
-  ('c1000001-0000-0000-0000-000000000004', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Vikram Singh', 'vikram@buildspace.co', '+91 65432 10987', 'BuildSpace Architecture', '07AABCB3456L1Z8', '23, Connaught Place, New Delhi 110001', '2025-04-10'),
-  ('c1000001-0000-0000-0000-000000000005', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Meera Patel', 'meera@greenleaf.org', '+91 54321 09876', 'GreenLeaf Organics', '24AABCG7890M1Z6', '15, CG Road, Ahmedabad, Gujarat 380006', '2025-12-05'),
-  ('c1000001-0000-0000-0000-000000000006', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Arjun Nair', 'arjun@pixelwave.dev', '+91 43210 98765', 'PixelWave Studios', '32AABCP4567N1Z4', '89, Marine Drive, Kochi, Kerala 682031', '2025-09-12')
+INSERT INTO clients (id, user_id, name, email, phone, company_name, gst_number, company, gst, address, created_at) VALUES
+  ('c1000001-0000-0000-0000-000000000001', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Priya Sharma', 'priya@designstudio.in', '+91 98765 43210', 'Sharma Design Studio', '27AADCS1234F1Z5', 'Sharma Design Studio', '27AADCS1234F1Z5', '412, Bandra West, Mumbai, Maharashtra 400050', '2025-08-15'),
+  ('c1000001-0000-0000-0000-000000000002', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Rahul Mehta', 'rahul@techsolutions.com', '+91 87654 32109', 'TechSolutions Pvt Ltd', '29AABCT5678H1Z3', 'TechSolutions Pvt Ltd', '29AABCT5678H1Z3', '56, Koramangala, Bengaluru, Karnataka 560034', '2025-06-20'),
+  ('c1000001-0000-0000-0000-000000000003', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Ananya Reddy', 'ananya@contentcraft.io', '+91 76543 21098', 'ContentCraft Media', '36AABCC9012K1Z1', 'ContentCraft Media', '36AABCC9012K1Z1', '78, Jubilee Hills, Hyderabad, Telangana 500033', '2025-10-01'),
+  ('c1000001-0000-0000-0000-000000000004', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Vikram Singh', 'vikram@buildspace.co', '+91 65432 10987', 'BuildSpace Architecture', '07AABCB3456L1Z8', 'BuildSpace Architecture', '07AABCB3456L1Z8', '23, Connaught Place, New Delhi 110001', '2025-04-10'),
+  ('c1000001-0000-0000-0000-000000000005', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Meera Patel', 'meera@greenleaf.org', '+91 54321 09876', 'GreenLeaf Organics', '24AABCG7890M1Z6', 'GreenLeaf Organics', '24AABCG7890M1Z6', '15, CG Road, Ahmedabad, Gujarat 380006', '2025-12-05'),
+  ('c1000001-0000-0000-0000-000000000006', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Arjun Nair', 'arjun@pixelwave.dev', '+91 43210 98765', 'PixelWave Studios', '32AABCP4567N1Z4', 'PixelWave Studios', '32AABCP4567N1Z4', '89, Marine Drive, Kochi, Kerala 682031', '2025-09-12')
 ON CONFLICT DO NOTHING;
 
 -- ─── Invoices ───

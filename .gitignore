@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+backend/instance/
+backend/*.log
+backend/uploads/exports/*
+backend/uploads/invoices/*
+backend/uploads/logos/*
+!backend/uploads/exports/.gitkeep
+!backend/uploads/invoices/.gitkeep
+!backend/uploads/logos/.gitkeep
+
+frontend/dist/
+frontend/*.log

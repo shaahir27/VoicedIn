@@ -9,7 +9,7 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate, daysUntil, getRelativeTime, isOverdue } from '../utils/dateHelpers';
 
 export default function DashboardPage() {
-  const { invoices, stats, chartData, recentInvoices: ctxRecent, alerts: ctxAlerts } = useInvoices();
+  const { invoices, stats, chartData, recentInvoices: ctxRecent, alerts: ctxAlerts, loadingData, dataError } = useInvoices();
 
   const recentInvoices = ctxRecent.length > 0
     ? ctxRecent
@@ -42,6 +42,18 @@ export default function DashboardPage() {
           <Button icon={Plus} size="lg">Create Invoice</Button>
         </Link>
       </div>
+
+      {dataError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Could not fully refresh invoice data: {dataError}. If the invoice list is empty, check the backend/Supabase migration status.
+        </div>
+      )}
+
+      {loadingData && invoices.length === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+          Loading your saved invoices...
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -1,6 +1,35 @@
 import pool from '../db/pool.js';
+import config from '../config/index.js';
+
+let premiumRequestSchemaPromise = null;
+
+function ensurePremiumPaymentRequestSchema() {
+    if (!premiumRequestSchemaPromise) {
+        premiumRequestSchemaPromise = pool.query(`
+            CREATE TABLE IF NOT EXISTS premium_payment_requests (
+              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+              user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              amount DECIMAL(8,2) NOT NULL DEFAULT 99,
+              currency VARCHAR(5) DEFAULT 'INR',
+              upi_id VARCHAR(255),
+              status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+              note TEXT,
+              requested_at TIMESTAMPTZ DEFAULT NOW(),
+              approved_at TIMESTAMPTZ,
+              approved_by VARCHAR(255)
+            );
+            CREATE INDEX IF NOT EXISTS idx_premium_payment_requests_status ON premium_payment_requests(status);
+            CREATE INDEX IF NOT EXISTS idx_premium_payment_requests_user_id ON premium_payment_requests(user_id);
+        `).catch(err => {
+            premiumRequestSchemaPromise = null;
+            throw err;
+        });
+    }
+    return premiumRequestSchemaPromise;
+}
 
 export async function getSubscription(userId) {
+    await ensurePremiumPaymentRequestSchema();
     const { rows } = await pool.query(
         `SELECT s.*, u.demo_used, u.demo_started_at, u.demo_completed_at
      FROM subscriptions s
@@ -17,6 +46,8 @@ export async function getSubscription(userId) {
             demoUsed: false,
             renewalDate: null,
             upgradeRequired: true,
+            payment: getStaticPaymentInstructions(),
+            paymentRequest: await getLatestPaymentRequest(userId),
         };
     }
 
@@ -31,6 +62,8 @@ export async function getSubscription(userId) {
         renewalDate: sub.renewal_date,
         expiryDate: sub.expiry_date,
         upgradeRequired: sub.status !== 'active',
+        payment: sub.status === 'active' ? null : getStaticPaymentInstructions(),
+        paymentRequest: await getLatestPaymentRequest(userId),
     };
 }
 
@@ -48,83 +81,90 @@ export async function getBillingHistory(userId) {
 }
 
 export async function createCheckout(userId) {
-    // Dodo Payments integration placeholder
-    // In production, you would create a checkout session with Dodo Payments API
+    const sub = await getSubscription(userId);
     return {
-        checkoutUrl: `https://checkout.dodopayments.com/session/${Date.now()}`,
-        message: 'Redirect user to checkout URL',
+        payment: sub.payment || getStaticPaymentInstructions(),
+        message: 'Static QR payment instructions returned. Premium is activated after manual confirmation.',
     };
 }
 
-export async function handleWebhook(payload, signature) {
-    // Verify webhook signature from Dodo
-    // Process subscription events: payment_success, payment_failed, subscription_cancelled, etc.
+export async function createPaymentRequest(userId) {
+    await ensurePremiumPaymentRequestSchema();
 
-    const event = payload.event || payload.type;
-
-    if (event === 'payment.success' || event === 'subscription.active') {
-        const userId = payload.metadata?.userId;
-        if (userId) {
-            await activateSubscription(userId, payload);
-        }
+    const subscription = await getSubscription(userId);
+    if (subscription.status === 'active') {
+        return { request: null, message: 'This account is already Premium.' };
     }
 
-    if (event === 'payment.failed') {
-        const userId = payload.metadata?.userId;
-        if (userId) {
-            await pool.query(
-                `UPDATE subscriptions SET status = 'payment_failed', failure_reason = $1 WHERE user_id = $2`,
-                [payload.error?.message || 'Payment failed', userId]
-            );
-            await pool.query(`UPDATE users SET subscription_status = 'premium_expired' WHERE id = $1`, [userId]);
-        }
+    const existing = await getLatestPaymentRequest(userId, 'pending');
+    if (existing) {
+        return { request: existing, message: 'Your Premium payment request is already pending admin approval.' };
     }
 
-    if (event === 'subscription.cancelled') {
-        const userId = payload.metadata?.userId;
-        if (userId) {
-            await pool.query(`UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1`, [userId]);
-            await pool.query(`UPDATE users SET subscription_status = 'cancelled' WHERE id = $1`, [userId]);
-        }
-    }
+    const payment = getStaticPaymentInstructions();
+    const { rows } = await pool.query(
+        `INSERT INTO premium_payment_requests (user_id, amount, currency, upi_id, status, note)
+         VALUES ($1, $2, $3, $4, 'pending', $5)
+         RETURNING *`,
+        [userId, payment.amount, payment.currency, payment.upiId || null, payment.note]
+    );
 
-    return { received: true };
+    const request = transformPaymentRequest(rows[0]);
+    console.log(`[godmode] Premium payment approval requested: request=${request.id} user=${userId} amount=${request.amount}`);
+    return { request, message: 'Payment request sent to admin for approval.' };
 }
 
-async function activateSubscription(userId, payload) {
-    const now = new Date();
-    const renewal = new Date(now);
-    renewal.setMonth(renewal.getMonth() + 1);
-
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        await client.query(
-            `UPDATE subscriptions SET
-        plan = 'premium', price = 99, status = 'active',
-        start_date = $1, renewal_date = $2,
-        provider_customer_id = $3, provider_subscription_id = $4, provider_payment_id = $5
-       WHERE user_id = $6`,
-            [now, renewal, payload.customer_id, payload.subscription_id, payload.payment_id, userId]
-        );
-
-        await client.query(
-            `UPDATE users SET subscription_status = 'active' WHERE id = $1`,
-            [userId]
-        );
-
-        // Record billing payment
-        await client.query(
-            `INSERT INTO billing_payments (user_id, amount, date, method, status) VALUES ($1, 99, $2, 'Online', 'paid')`,
-            [userId, now]
-        );
-
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+export async function handleWebhook() {
+    // External payment providers were removed. Keep this no-op so old deployments do not crash.
+    return { received: true, ignored: true };
 }
+
+function getStaticPaymentInstructions() {
+    return {
+        amount: config.premiumPayment.amount,
+        currency: 'INR',
+        upiId: config.premiumPayment.upiId,
+        payeeName: config.premiumPayment.payeeName,
+        qrUrl: config.premiumPayment.qrUrl,
+        note: config.premiumPayment.note,
+    };
+}
+
+async function getLatestPaymentRequest(userId, status) {
+    await ensurePremiumPaymentRequestSchema();
+    const params = [userId];
+    let query = `
+        SELECT ppr.*, u.name AS user_name, u.email AS user_email
+        FROM premium_payment_requests ppr
+        JOIN users u ON u.id = ppr.user_id
+        WHERE ppr.user_id = $1
+    `;
+    if (status) {
+        params.push(status);
+        query += ` AND ppr.status = $${params.length}`;
+    }
+    query += ' ORDER BY ppr.requested_at DESC LIMIT 1';
+    const { rows } = await pool.query(query, params);
+    return rows[0] ? transformPaymentRequest(rows[0]) : null;
+}
+
+export function transformPaymentRequest(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        userId: row.user_id,
+        userName: row.user_name || '',
+        userEmail: row.user_email || '',
+        amount: Number(row.amount || 0),
+        currency: row.currency || 'INR',
+        upiId: row.upi_id || '',
+        status: row.status,
+        note: row.note || '',
+        requestedAt: row.requested_at,
+        approvedAt: row.approved_at,
+        approvedBy: row.approved_by || '',
+    };
+}
+
+export { ensurePremiumPaymentRequestSchema, getStaticPaymentInstructions };
+

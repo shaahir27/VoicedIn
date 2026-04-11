@@ -11,6 +11,8 @@ import { useInvoices } from '../context/InvoiceContext';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/dateHelpers';
+import { downloadInvoicePdf } from '../utils/downloadInvoicePdf';
+import { api } from '../utils/api';
 
 const statusFilters = [
   { value: 'all', label: 'All' },
@@ -21,12 +23,13 @@ const statusFilters = [
 ];
 
 export default function InvoicesPage() {
-  const { invoices, markAsPaid } = useInvoices();
+  const { invoices, markAsPaid, loadingData, dataError } = useInvoices();
   const { showToast } = useApp();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
   const [previewInvoice, setPreviewInvoice] = useState(null);
+  const [sharingInvoiceId, setSharingInvoiceId] = useState(null);
 
   const filtered = invoices.filter(inv => {
     const matchesSearch = inv.number.toLowerCase().includes(search.toLowerCase()) ||
@@ -39,37 +42,32 @@ export default function InvoicesPage() {
     try {
       await markAsPaid(inv.id);
       showToast(`${inv.number} marked as paid`);
-    } catch (err) {
+    } catch {
       showToast('Failed to mark as paid', 'error');
     }
   };
 
-  const handleDownloadPDF = async (inv) => {
+  const handleDownloadPdf = async (inv) => {
     try {
-      showToast('Generating PDF...');
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/invoices/${inv.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (!response.ok) throw new Error('Failed to generate PDF');
-
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        if (data.pdfUrl) window.open(`http://localhost:5000${data.pdfUrl}`, '_blank');
-      } else {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `invoice-${inv.number}.pdf`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-      }
+      await downloadInvoicePdf(inv.id, inv.number);
+      showToast(`${inv.number} downloaded as PDF`);
     } catch (err) {
-      console.error(err);
-      showToast('Failed to download PDF', 'error');
+      showToast(err.message || 'Failed to download PDF', 'error');
+    }
+  };
+
+  const handleShareInvoice = async (inv) => {
+    setSharingInvoiceId(inv.id);
+    try {
+      const data = await api.post('/share-links', { invoiceId: inv.id });
+      const path = data.url || `/share/${data.token}`;
+      const link = path.startsWith('http') ? path : `${window.location.origin}${path}`;
+      await navigator.clipboard.writeText(link);
+      showToast('Invoice link copied!');
+    } catch (err) {
+      showToast(err.message || 'Failed to create share link', 'error');
+    } finally {
+      setSharingInvoiceId(null);
     }
   };
 
@@ -87,6 +85,18 @@ export default function InvoicesPage() {
           </Link>
         </div>
       </div>
+
+      {dataError && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Could not fully refresh invoice data: {dataError}. Your saved data is still tied to this login; check the backend/Supabase logs if this persists.
+        </div>
+      )}
+
+      {loadingData && invoices.length === 0 && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+          Loading your saved invoices...
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -134,8 +144,8 @@ export default function InvoicesPage() {
                   <button onClick={() => setPreviewInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
                     <Eye className="w-4 h-4 text-slate-400" />
                   </button>
-                  <button onClick={() => showToast('Link copied!')} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
-                    <Link2 className="w-4 h-4 text-slate-400" />
+                  <button onClick={() => handleShareInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" disabled={sharingInvoiceId === inv.id}>
+                    <Link2 className={`w-4 h-4 ${sharingInvoiceId === inv.id ? 'text-primary-500' : 'text-slate-400'}`} />
                   </button>
                   {(inv.status === 'unpaid' || inv.status === 'overdue') && (
                     <button onClick={() => handleMarkPaid(inv)} className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-medium hover:bg-emerald-100 cursor-pointer">
@@ -193,7 +203,9 @@ export default function InvoicesPage() {
               <div>
                 <p className="text-sm text-slate-500">Client</p>
                 <p className="font-semibold text-slate-800">{previewInvoice.clientName}</p>
-                <p className="text-sm text-slate-400">{previewInvoice.company}</p>
+                <p className="text-sm text-slate-400">{previewInvoice.clientCompanyName || previewInvoice.company}</p>
+                {previewInvoice.clientGstNumber && <p className="text-xs text-slate-400">GST: {previewInvoice.clientGstNumber}</p>}
+                {previewInvoice.clientAddress && <p className="text-xs text-slate-400">{previewInvoice.clientAddress}</p>}
               </div>
               <div className="text-right">
                 <p className="text-sm text-slate-500">Total</p>
@@ -214,8 +226,8 @@ export default function InvoicesPage() {
               </tbody>
             </table>
             <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" icon={Download} onClick={() => handleDownloadPDF(previewInvoice)}>Download</Button>
-              <Button variant="outline" icon={Copy} onClick={() => showToast('Link copied!')}>Share</Button>
+              <Button variant="outline" icon={Download} onClick={() => handleDownloadPdf(previewInvoice)}>Download</Button>
+              <Button variant="outline" icon={Copy} loading={sharingInvoiceId === previewInvoice.id} onClick={() => handleShareInvoice(previewInvoice)}>Share</Button>
               {(previewInvoice.status === 'unpaid' || previewInvoice.status === 'overdue') && (
                 <Button variant="success" onClick={() => { handleMarkPaid(previewInvoice); setPreviewInvoice(null); }}>Mark as Paid</Button>
               )}
