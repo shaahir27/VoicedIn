@@ -2,6 +2,10 @@ import pg from 'pg';
 import config from '../config/index.js';
 
 function parseDbUrl(url) {
+    if (!url) {
+        throw new Error('DATABASE_URL is required. Set it on the backend service before deploying.');
+    }
+
     try {
         // Try standard URL parsing first
         const parsed = new URL(url);
