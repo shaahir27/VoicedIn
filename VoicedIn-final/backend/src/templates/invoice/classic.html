@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            color: #1e293b;
+            background: #fff;
+            padding: 40px;
+            font-size: 14px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 36px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #1e293b;
+        }
+
+        .logo-section h1 {
+            font-size: 24px;
+            color: #1e293b;
+            font-weight: 700;
+        }
+
+        .logo-section p {
+            color: #475569;
+            font-size: 12px;
+            margin-top: 3px;
+        }
+
+        .invoice-title {
+            text-align: right;
+        }
+
+        .invoice-title h2 {
+            font-size: 28px;
+            color: #1e293b;
+            font-weight: 700;
+            font-style: italic;
+        }
+
+        .invoice-title p {
+            color: #64748b;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .info-grid {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .info-block h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #475569;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .info-block p {
+            color: #334155;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 28px;
+        }
+
+        thead {
+            border-top: 2px solid #1e293b;
+            border-bottom: 2px solid #1e293b;
+        }
+
+        th {
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #1e293b;
+        }
+
+        th:last-child {
+            text-align: right;
+        }
+
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 13px;
+        }
+
+        td:last-child {
+            text-align: right;
+        }
+
+        .totals {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 28px;
+        }
+
+        .totals-box {
+            width: 260px;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 13px;
+            color: #475569;
+        }
+
+        .total-row.grand {
+            border-top: 2px solid #1e293b;
+            padding-top: 10px;
+            margin-top: 4px;
+            font-size: 17px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .notes {
+            border-left: 3px solid #475569;
+            padding-left: 16px;
+            margin-bottom: 20px;
+        }
+
+        .notes h3 {
+            font-size: 12px;
+            color: #475569;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .notes p {
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        .footer {
+            text-align: center;
+            color: #94a3b8;
+            font-size: 11px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 16px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="logo-section">
+            <h1>{{businessName}}</h1>
+            <p>{{businessAddress}}</p>
+            <p>{{businessEmail}} · {{businessPhone}}</p>
+            <p>GST: {{businessGST}}</p>
+        </div>
+        <div class="invoice-title">
+            <h2>Invoice</h2>
+            <p><strong>{{invoiceNumber}}</strong></p>
+            <p>Date: {{invoiceDate}}</p>
+            <p>Due: {{dueDate}}</p>
+        </div>
+    </div>
+    <div class="info-grid">
+        <div class="info-block">
+            <h3>Bill To</h3>
+            <p><strong>{{clientName}}</strong></p>
+            <p>{{clientCompany}}</p>
+            <p>{{clientGstNumber}}</p>
+            <p>{{clientAddress}}</p>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Description</th>
+                <th>Qty</th>
+                <th>Rate</th>
+                <th>Tax</th>
+                <th>Amount</th>
+            </tr>
+        </thead>
+        <tbody>{{itemRows}}</tbody>
+    </table>
+    <div class="totals">
+        <div class="totals-box">
+            <div class="total-row"><span>Subtotal</span><span>{{subtotal}}</span></div>
+            <div class="total-row"><span>Tax</span><span>{{taxTotal}}</span></div>
+            <div class="total-row grand"><span>Total</span><span>{{total}}</span></div>
+        </div>
+    </div>
+    <div class="notes">
+        <h3>Notes</h3>
+        <p>{{notes}}</p>
+    </div>
+    <div class="notes">
+        <h3>Terms</h3>
+        <p>{{terms}}</p>
+    </div>
+    <div class="footer">
+        <p>Generated by voicedIn · voicedin.io</p>
+    </div>
+</body>
+
+</html>
