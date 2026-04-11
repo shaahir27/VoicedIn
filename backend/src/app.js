@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import config from './config/index.js';
+import pool from './db/pool.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // Route imports
@@ -34,6 +35,36 @@ function apiStatus(req, res) {
     });
 }
 
+async function healthCheck(req, res) {
+    try {
+        const { rows } = await pool.query(`
+            SELECT
+              to_regclass('public.users') AS users_table,
+              to_regclass('public.business_profiles') AS business_profiles_table
+        `);
+        const schemaReady = Boolean(rows[0]?.users_table && rows[0]?.business_profiles_table);
+
+        if (!schemaReady) {
+            return res.status(503).json({
+                status: 'error',
+                database: 'schema_missing',
+                message: 'Database is reachable, but required tables are missing. Run migrations.',
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        res.json({ status: 'ok', database: 'ok', timestamp: new Date().toISOString() });
+    } catch (err) {
+        console.error('Health check failed:', err.message);
+        res.status(503).json({
+            status: 'error',
+            database: 'unreachable',
+            message: 'Database is not reachable. Check DATABASE_URL.',
+            timestamp: new Date().toISOString(),
+        });
+    }
+}
+
 // ── Middleware ──
 app.use(cors({
     origin(origin, callback) {
@@ -55,12 +86,8 @@ app.use(express.urlencoded({ extended: true }));
 // Backend home/status routes. Keep these before API routers and the 404 handler.
 app.get('/', apiStatus);
 app.get('/api', apiStatus);
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+app.get('/health', healthCheck);
+app.get('/api/health', healthCheck);
 
 // Static file serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, '..', config.uploadDir)));

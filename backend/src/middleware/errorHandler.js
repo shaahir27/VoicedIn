@@ -1,11 +1,8 @@
 import { AppError } from '../utils/errors.js';
 
 export function errorHandler(err, req, res, _next) {
-    // Log in development
-    if (process.env.NODE_ENV !== 'production') {
-        console.error('Error:', err.message);
-        if (!err.isOperational) console.error(err.stack);
-    }
+    console.error('Error:', err.message);
+    if (!err.isOperational) console.error(err.stack);
 
     if (err.isOperational) {
         return res.status(err.statusCode).json({
@@ -27,6 +24,14 @@ export function errorHandler(err, req, res, _next) {
         return res.status(400).json({
             success: false,
             message: 'Referenced record does not exist',
+        });
+    }
+
+    // Database unavailable or required schema missing.
+    if (['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', '28P01', '3D000', '42P01', '42703'].includes(err.code)) {
+        return res.status(503).json({
+            success: false,
+            message: 'Database is not ready. Check DATABASE_URL and run migrations.',
         });
     }
 

@@ -24,7 +24,7 @@ BEGIN
       ADD CONSTRAINT share_links_invoice_id_fkey
       FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE;
   END IF;
-END
+END;
 $$;
 
 CREATE INDEX IF NOT EXISTS idx_share_links_invoice_id ON share_links(invoice_id);

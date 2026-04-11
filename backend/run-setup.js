@@ -2,15 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from './src/db/pool.js';
+import { runMigrations } from './scripts/migrate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function run() {
     try {
         console.log('Running migrations...');
-        const migrationSql = fs.readFileSync(path.join(__dirname, 'src/db/migrations/001_initial.sql'), 'utf-8');
-        await pool.query(migrationSql);
-        console.log('Migrations completed.');
+        await runMigrations({ closePool: false });
 
         console.log('Running seeds...');
         const seedSql = fs.readFileSync(path.join(__dirname, 'src/db/seed.sql'), 'utf-8');

@@ -41,5 +41,5 @@ BEGIN
       ADD CONSTRAINT invoices_client_id_fkey
       FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL;
   END IF;
-END
+END;
 $$;

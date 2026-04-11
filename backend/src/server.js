@@ -26,8 +26,11 @@ async function start() {
         client.release();
     } catch (err) {
         console.error('✗ Database connection failed:', err.message);
-        console.log('  Server will start but database queries will fail.');
         console.log('  Make sure PostgreSQL is running and DATABASE_URL is correct in .env');
+        if (config.nodeEnv === 'production') {
+            process.exit(1);
+        }
+        console.log('  Server will start but database queries will fail.');
     }
 
     app.listen(config.port, () => {
