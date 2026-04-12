@@ -97,10 +97,9 @@ export async function generateInvoicePDF(req, res, next) {
         res.setHeader('Content-Length', String(pdfBuffer.length));
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Invoice-PDF-Renderer', result.renderer || (result.fallback ? 'fallback' : 'browser'));
 
-        if (process.env.NODE_ENV !== 'production') {
-            console.log(`[invoice-pdf] response invoice=${invoice.number} bytes=${pdfBuffer.length} header=${pdfBuffer.subarray(0, 5).toString('ascii')} fallback=${Boolean(result.fallback)}`);
-        }
+        console.log(`[invoice-pdf] response invoice=${invoice.number} bytes=${pdfBuffer.length} header=${pdfBuffer.subarray(0, 5).toString('ascii')} renderer=${result.renderer || (result.fallback ? 'fallback' : 'browser')}${result.fallbackReason ? ` reason=${result.fallbackReason}` : ''}`);
 
         return res.end(pdfBuffer);
     } catch (err) { next(err); }

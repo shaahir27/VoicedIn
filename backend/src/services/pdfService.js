@@ -8,7 +8,7 @@ const A4_WIDTH = 595;
 const A4_HEIGHT = 842;
 const PAGE_MARGIN = 42;
 
-function resolveBrowserExecutablePath() {
+function resolveBrowserExecutablePath(puppeteer) {
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
         return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
@@ -18,6 +18,10 @@ function resolveBrowserExecutablePath() {
     const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
 
     const candidates = [
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
         path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
         path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
         path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -26,7 +30,15 @@ function resolveBrowserExecutablePath() {
         path.join(localAppData, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     ];
 
-    return candidates.find(candidate => candidate && fs.existsSync(candidate)) || null;
+    const systemPath = candidates.find(candidate => candidate && fs.existsSync(candidate));
+    if (systemPath) return systemPath;
+
+    try {
+        const bundledPath = puppeteer?.executablePath?.();
+        return bundledPath && fs.existsSync(bundledPath) ? bundledPath : null;
+    } catch {
+        return null;
+    }
 }
 
 export async function generatePDF(invoiceData, businessProfile, templateId = 'modern', isDemo = false) {
@@ -56,14 +68,13 @@ export async function generatePDF(invoiceData, businessProfile, templateId = 'mo
         fs.writeFileSync(pdfPath, pdfBuffer);
         verifySavedPdf(pdfPath, 'Invoice PDF');
 
-        if (process.env.NODE_ENV !== 'production') {
-            console.log(`[invoice-pdf] saved ${pdfPath} (${pdfBuffer.length} bytes, browser)`);
-        }
+        console.log(`[invoice-pdf] saved ${pdfPath} (${pdfBuffer.length} bytes, browser)`);
 
         return {
             pdfUrl: `/uploads/invoices/${fileName}`,
             pdfPath,
             buffer: pdfBuffer,
+            renderer: 'browser',
         };
     } catch (browserErr) {
         const pdfBuffer = buildFallbackPdf(invoiceData, resolvedProfile, isDemo);
@@ -71,14 +82,13 @@ export async function generatePDF(invoiceData, businessProfile, templateId = 'mo
         fs.writeFileSync(pdfPath, pdfBuffer);
         verifySavedPdf(pdfPath, 'Invoice PDF fallback');
 
-        if (process.env.NODE_ENV !== 'production') {
-            console.log(`[invoice-pdf] saved ${pdfPath} (${pdfBuffer.length} bytes, fallback: ${browserErr.message})`);
-        }
+        console.warn(`[invoice-pdf] browser renderer failed; saved fallback ${pdfPath} (${pdfBuffer.length} bytes): ${browserErr.message}`);
 
         return {
             pdfUrl: `/uploads/invoices/${fileName}`,
             pdfPath,
             buffer: pdfBuffer,
+            renderer: 'fallback',
             fallback: true,
             fallbackReason: browserErr.message,
         };
@@ -89,10 +99,19 @@ async function generateBrowserPdf(html) {
     const puppeteer = await import('puppeteer');
     const launchOptions = {
         headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        timeout: 60000,
+        protocolTimeout: 60000,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-default-browser-check',
+        ],
     };
 
-    const executablePath = resolveBrowserExecutablePath();
+    const executablePath = resolveBrowserExecutablePath(puppeteer.default);
     if (executablePath) {
         launchOptions.executablePath = executablePath;
     }

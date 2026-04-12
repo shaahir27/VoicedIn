@@ -3,7 +3,7 @@ services:
     name: voicedin
     runtime: node
     rootDir: backend
-    buildCommand: "npm install"
+    buildCommand: "npm install && npx puppeteer browsers install chrome"
     preDeployCommand: "npm run migrate"
     startCommand: "npm start"
     healthCheckPath: "/api/health"

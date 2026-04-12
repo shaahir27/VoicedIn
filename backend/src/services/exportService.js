@@ -10,12 +10,16 @@ const A4_WIDTH = 595;
 const A4_HEIGHT = 842;
 const PAGE_MARGIN = 42;
 
-function resolveBrowserExecutablePath() {
+function resolveBrowserExecutablePath(puppeteer) {
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
         return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
 
     const candidates = [
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Users\\shaah\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe',
@@ -24,7 +28,15 @@ function resolveBrowserExecutablePath() {
         'C:\\Users\\shaah\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe',
     ];
 
-    return candidates.find(candidate => fs.existsSync(candidate)) || null;
+    const systemPath = candidates.find(candidate => fs.existsSync(candidate));
+    if (systemPath) return systemPath;
+
+    try {
+        const bundledPath = puppeteer?.executablePath?.();
+        return bundledPath && fs.existsSync(bundledPath) ? bundledPath : null;
+    } catch {
+        return null;
+    }
 }
 
 export async function exportCSV(userId, filters = {}) {
@@ -180,9 +192,18 @@ export async function exportPDF(userId, filters = {}) {
         const puppeteer = await import('puppeteer');
         const launchOptions = {
             headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            timeout: 60000,
+            protocolTimeout: 60000,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-default-browser-check',
+            ],
         };
-        const executablePath = resolveBrowserExecutablePath();
+        const executablePath = resolveBrowserExecutablePath(puppeteer.default);
         if (executablePath) {
             launchOptions.executablePath = executablePath;
         }
