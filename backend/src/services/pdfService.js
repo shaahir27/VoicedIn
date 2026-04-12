@@ -77,7 +77,7 @@ export async function generatePDF(invoiceData, businessProfile, templateId = 'mo
             renderer: 'browser',
         };
     } catch (browserErr) {
-        const pdfBuffer = buildFallbackPdf(invoiceData, resolvedProfile, isDemo);
+        const pdfBuffer = buildFallbackPdf(invoiceData, resolvedProfile, templateId, isDemo);
         validatePdfBuffer(pdfBuffer, 'Invoice PDF fallback');
         fs.writeFileSync(pdfPath, pdfBuffer);
         verifySavedPdf(pdfPath, 'Invoice PDF fallback');
@@ -379,7 +379,8 @@ function getTemplateTheme(templateId = 'modern') {
     return themes[templateId] || themes.modern;
 }
 
-function buildFallbackPdf(invoiceData, businessProfile, isDemo) {
+function buildFallbackPdf(invoiceData, businessProfile, templateId = 'modern', isDemo) {
+    const theme = getTemplateTheme(templateId);
     const pages = [];
     const fonts = {
         regular: 'F1',
@@ -389,107 +390,82 @@ function buildFallbackPdf(invoiceData, businessProfile, isDemo) {
     let page = createPage();
     pages.push(page);
 
-    page.cursorY = drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts);
-    page.cursorY = drawSectionHeader(page, page.cursorY, 'From', fonts.bold);
-    page.cursorY = drawText(page, safeText(businessProfile?.businessName || businessProfile?.name || 'VoicedIn'), PAGE_MARGIN, page.cursorY, 11, fonts.regular);
-    if (businessProfile?.address) {
-        page.cursorY = drawParagraph(page, businessProfile.address, PAGE_MARGIN, page.cursorY, 10, fonts.regular, 320);
-    }
-    if (businessProfile?.email || businessProfile?.phone) {
-        page.cursorY = drawText(page, safeText([businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ')), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-    }
-    if (businessProfile?.gst || businessProfile?.panNumber) {
-        page.cursorY = drawText(page, safeText([businessProfile.gst ? `GST: ${businessProfile.gst}` : '', businessProfile.panNumber ? `PAN: ${businessProfile.panNumber}` : ''].filter(Boolean).join(' | ')), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-    }
-    page.cursorY -= 8;
-
-    page.cursorY = drawSectionHeader(page, page.cursorY, 'Billed To', fonts.bold);
-    if (invoiceData.clientName) {
-        page.cursorY = drawText(page, safeText(invoiceData.clientName), PAGE_MARGIN, page.cursorY, 11, fonts.regular);
-    }
-    const clientCompany = invoiceData.clientCompanyName || invoiceData.company || invoiceData.clientDetails?.companyName;
-    if (clientCompany) {
-        page.cursorY = drawText(page, safeText(clientCompany), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-    }
-    if (invoiceData.clientGstNumber || invoiceData.clientDetails?.gstNumber) {
-        page.cursorY = drawText(page, safeText(`GST: ${invoiceData.clientGstNumber || invoiceData.clientDetails?.gstNumber}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-    }
-    if (invoiceData.clientAddress || invoiceData.clientDetails?.address) {
-        page.cursorY = drawParagraph(page, invoiceData.clientAddress || invoiceData.clientDetails?.address, PAGE_MARGIN, page.cursorY, 10, fonts.regular, 320);
-    }
-    page.cursorY -= 10;
-    page.cursorY = drawTableHeader(page, page.cursorY, fonts.bold);
+    page.cursorY = drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts, theme);
+    page.cursorY = drawDetailCards(page, page.cursorY, invoiceData, businessProfile, fonts, theme);
+    page.cursorY -= 18;
+    page.cursorY = drawTableHeader(page, page.cursorY, fonts.bold, theme);
 
     const items = invoiceData.items || [];
     for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
         const rowHeight = estimateRowHeight(item);
 
-        if (page.cursorY - rowHeight < PAGE_MARGIN + 130) {
+        if (page.cursorY - rowHeight < PAGE_MARGIN + 156) {
             page = createPage();
             pages.push(page);
-            page.cursorY = drawContinuationHeader(page, invoiceData, businessProfile, fonts);
-            page.cursorY = drawTableHeader(page, page.cursorY, fonts.bold);
+            page.cursorY = drawContinuationHeader(page, invoiceData, businessProfile, fonts, theme);
+            page.cursorY = drawTableHeader(page, page.cursorY, fonts.bold, theme);
         }
 
-        page.cursorY = drawItemRow(page, index, item, page.cursorY, fonts.regular);
+        page.cursorY = drawItemRow(page, index, item, page.cursorY, fonts.regular, theme);
     }
 
-    if (page.cursorY - 90 < PAGE_MARGIN) {
+    if (page.cursorY - 118 < PAGE_MARGIN) {
         page = createPage();
         pages.push(page);
-        page.cursorY = drawContinuationHeader(page, invoiceData, businessProfile, fonts);
+        page.cursorY = drawContinuationHeader(page, invoiceData, businessProfile, fonts, theme);
     }
 
-    page.cursorY -= 6;
-    page.cursorY = drawTotals(page, invoiceData, page.cursorY, fonts);
-
-    if (hasBankDetails(businessProfile)) {
-        if (page.cursorY - 74 < PAGE_MARGIN) {
-            page = createPage();
-            pages.push(page);
-            page.cursorY = drawContinuationHeader(page, invoiceData, businessProfile, fonts);
-        }
-
-        page.cursorY -= 8;
-        page.cursorY = drawSectionHeader(page, page.cursorY, 'Payment Info', fonts.bold);
-        if (businessProfile.bankAccountName) {
-            page.cursorY = drawText(page, safeText(`Account: ${businessProfile.bankAccountName}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankName) {
-            page.cursorY = drawText(page, safeText(`Bank: ${businessProfile.bankName}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankAccountNumber) {
-            page.cursorY = drawText(page, safeText(`A/C No: ${businessProfile.bankAccountNumber}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankIfsc) {
-            page.cursorY = drawText(page, safeText(`IFSC: ${businessProfile.bankIfsc}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankUpi) {
-            page.cursorY = drawText(page, safeText(`UPI: ${businessProfile.bankUpi}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-    }
-
-    if (invoiceData.notes || invoiceData.terms) {
-        if (page.cursorY - 64 < PAGE_MARGIN) {
-            page = createPage();
-            pages.push(page);
-            page.cursorY = drawContinuationHeader(page, invoiceData, businessProfile, fonts);
-        }
-
-        page.cursorY -= 8;
-        page.cursorY = drawSectionHeader(page, page.cursorY, 'Notes', fonts.bold);
-        if (invoiceData.notes) {
-            page.cursorY = drawParagraph(page, invoiceData.notes, PAGE_MARGIN, page.cursorY, 10, fonts.regular, 82);
-        }
-        if (invoiceData.terms) {
-            page.cursorY -= 4;
-            page.cursorY = drawSectionHeader(page, page.cursorY, 'Terms', fonts.bold);
-            page.cursorY = drawParagraph(page, invoiceData.terms, PAGE_MARGIN, page.cursorY, 10, fonts.regular, 82);
-        }
-    }
+    page.cursorY -= 12;
+    page.cursorY = drawBottomSummary(page, invoiceData, businessProfile, page.cursorY, fonts, theme);
 
     return assemblePdf(pages);
+}
+
+function drawDetailCards(page, y, invoiceData, businessProfile, fonts, theme) {
+    const leftX = PAGE_MARGIN;
+    const rightX = 318;
+    const cardY = y - 84;
+    const cardHeight = 92;
+    const businessName = businessProfile?.businessName || businessProfile?.name || 'VoicedIn';
+    const clientCompany = invoiceData.clientCompanyName || invoiceData.company || invoiceData.clientDetails?.companyName;
+    const clientGst = invoiceData.clientGstNumber || invoiceData.clientDetails?.gstNumber;
+    const clientAddress = invoiceData.clientAddress || invoiceData.clientDetails?.address;
+
+    drawFilledRect(page, leftX, cardY, 226, cardHeight, theme.card);
+    drawFilledRect(page, leftX, cardY, 3, cardHeight, theme.primary);
+    drawFilledRect(page, rightX, cardY, 226, cardHeight, theme.card);
+    drawFilledRect(page, rightX, cardY, 3, cardHeight, theme.primary);
+
+    let fromY = y - 16;
+    fromY = drawText(page, 'From', leftX + 12, fromY, 9, fonts.bold, { color: theme.muted });
+    fromY = drawText(page, safeText(businessName), leftX + 12, fromY, 12, fonts.bold, { color: theme.text });
+    if (businessProfile?.address) {
+        fromY = drawParagraph(page, businessProfile.address, leftX + 12, fromY, 9, fonts.regular, 190, { color: theme.muted });
+    }
+    if (businessProfile?.email || businessProfile?.phone) {
+        fromY = drawText(page, safeText([businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ')), leftX + 12, fromY, 9, fonts.regular, { color: theme.muted });
+    }
+    if (businessProfile?.gst || businessProfile?.panNumber) {
+        drawText(page, safeText([businessProfile.gst ? `GST: ${businessProfile.gst}` : '', businessProfile.panNumber ? `PAN: ${businessProfile.panNumber}` : ''].filter(Boolean).join(' | ')), leftX + 12, fromY, 9, fonts.regular, { color: theme.muted });
+    }
+
+    let billedY = y - 16;
+    billedY = drawText(page, 'Billed To', rightX + 12, billedY, 9, fonts.bold, { color: theme.muted });
+    if (invoiceData.clientName) {
+        billedY = drawText(page, safeText(invoiceData.clientName), rightX + 12, billedY, 12, fonts.bold, { color: theme.text });
+    }
+    if (clientCompany) {
+        billedY = drawText(page, safeText(clientCompany), rightX + 12, billedY, 9, fonts.regular, { color: theme.muted });
+    }
+    if (clientGst) {
+        billedY = drawText(page, safeText(`GST: ${clientGst}`), rightX + 12, billedY, 9, fonts.regular, { color: theme.muted });
+    }
+    if (clientAddress) {
+        drawParagraph(page, clientAddress, rightX + 12, billedY, 9, fonts.regular, 190, { color: theme.muted });
+    }
+
+    return cardY - 16;
 }
 
 function createPage() {
@@ -499,40 +475,45 @@ function createPage() {
     };
 }
 
-function drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts) {
-    drawText(page, 'INVOICE', 408, A4_HEIGHT - PAGE_MARGIN, 20, fonts.bold);
-    let detailY = A4_HEIGHT - PAGE_MARGIN - 26;
+function drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts, theme) {
+    const businessName = businessProfile?.businessName || businessProfile?.name || 'VoicedIn';
+    const headerY = A4_HEIGHT - 146;
+
+    drawFilledRect(page, PAGE_MARGIN, headerY, 170, 104, theme.primary);
+    drawText(page, safeText(businessName), PAGE_MARGIN + 22, headerY + 56, 18, fonts.bold, { color: '#ffffff' });
+    drawText(page, 'Invoice', PAGE_MARGIN + 22, headerY + 34, 10, fonts.regular, { color: '#f8fafc' });
+
+    drawText(page, 'INVOICE', 350, A4_HEIGHT - 74, 28, fonts.bold, { color: theme.text });
+    let detailY = A4_HEIGHT - 106;
     if (invoiceData.number) {
-        detailY = drawText(page, safeText(`Invoice No: ${invoiceData.number}`), 408, detailY, 10, fonts.regular);
+        detailY = drawText(page, safeText(`Invoice No: ${invoiceData.number}`), 350, detailY, 10, fonts.regular, { color: theme.muted });
     }
     if (invoiceData.date) {
-        detailY = drawText(page, safeText(`Date: ${invoiceData.date}`), 408, detailY, 10, fonts.regular);
+        detailY = drawText(page, safeText(`Date: ${invoiceData.date}`), 350, detailY, 10, fonts.regular, { color: theme.muted });
     }
     if (invoiceData.dueDate) {
-        detailY = drawText(page, safeText(`Due: ${invoiceData.dueDate}`), 408, detailY, 10, fonts.regular);
+        detailY = drawText(page, safeText(`Due: ${invoiceData.dueDate}`), 350, detailY, 10, fonts.regular, { color: theme.muted });
     }
     if (invoiceData.status) {
-        drawText(page, safeText(`Status: ${invoiceData.status}`), 408, detailY, 10, fonts.regular);
+        drawText(page, safeText(`Status: ${invoiceData.status}`), 350, detailY, 10, fonts.regular, { color: theme.muted });
     }
 
     if (isDemo) {
-        drawText(page, 'DEMO - NOT VALID', 408, A4_HEIGHT - PAGE_MARGIN - 74, 10, fonts.bold);
+        drawText(page, 'DEMO - NOT VALID', 350, detailY - 16, 10, fonts.bold, { color: '#dc2626' });
     }
 
-    drawRule(page, PAGE_MARGIN, A4_HEIGHT - 120, A4_WIDTH - PAGE_MARGIN);
-
-    let cursorY = A4_HEIGHT - 146;
-    return cursorY;
+    drawRule(page, PAGE_MARGIN, headerY - 18, A4_WIDTH - PAGE_MARGIN, theme.primary, 1.2);
+    return headerY - 42;
 }
 
-function drawContinuationHeader(page, invoiceData, businessProfile, fonts) {
+function drawContinuationHeader(page, invoiceData, businessProfile, fonts, theme) {
     let y = A4_HEIGHT - PAGE_MARGIN;
-    y = drawText(page, safeText(businessProfile?.businessName || 'VoicedIn'), PAGE_MARGIN, y, 16, fonts.bold);
+    y = drawText(page, safeText(businessProfile?.businessName || 'VoicedIn'), PAGE_MARGIN, y, 16, fonts.bold, { color: theme.text });
     if (invoiceData.number) {
-        y = drawText(page, safeText(`Invoice: ${invoiceData.number}`), PAGE_MARGIN, y, 10, fonts.regular);
+        y = drawText(page, safeText(`Invoice: ${invoiceData.number}`), PAGE_MARGIN, y, 10, fonts.regular, { color: theme.muted });
     }
-    y = drawText(page, 'Continued', PAGE_MARGIN, y, 10, fonts.bold);
-    drawRule(page, PAGE_MARGIN, y - 10, A4_WIDTH - PAGE_MARGIN);
+    y = drawText(page, 'Continued', PAGE_MARGIN, y, 10, fonts.bold, { color: theme.muted });
+    drawRule(page, PAGE_MARGIN, y - 10, A4_WIDTH - PAGE_MARGIN, theme.primary);
     return y - 24;
 }
 
@@ -541,33 +522,32 @@ function drawSectionHeader(page, y, label, font) {
     return y - 18;
 }
 
-function drawTableHeader(page, y, fonts) {
-    drawRule(page, PAGE_MARGIN, y + 4, A4_WIDTH - PAGE_MARGIN);
-    drawText(page, '#', PAGE_MARGIN, y, 10, fonts);
-    drawText(page, 'Description', PAGE_MARGIN + 28, y, 10, fonts);
-    drawText(page, 'Qty', 305, y, 10, fonts);
-    drawText(page, 'Rate', 348, y, 10, fonts);
-    drawText(page, 'Tax', 420, y, 10, fonts);
-    drawText(page, 'Amount', 476, y, 10, fonts);
-    drawRule(page, PAGE_MARGIN, y - 8, A4_WIDTH - PAGE_MARGIN);
-    return y - 24;
+function drawTableHeader(page, y, fonts, theme) {
+    drawFilledRect(page, PAGE_MARGIN, y - 12, A4_WIDTH - (PAGE_MARGIN * 2), 28, theme.primary);
+    drawText(page, '#', PAGE_MARGIN + 8, y, 9, fonts, { color: '#ffffff' });
+    drawText(page, 'Description', PAGE_MARGIN + 40, y, 9, fonts, { color: '#ffffff' });
+    drawText(page, 'Qty', 306, y, 9, fonts, { color: '#ffffff' });
+    drawText(page, 'Rate', 350, y, 9, fonts, { color: '#ffffff' });
+    drawText(page, 'Tax', 420, y, 9, fonts, { color: '#ffffff' });
+    drawText(page, 'Amount', 486, y, 9, fonts, { color: '#ffffff' });
+    return y - 36;
 }
 
-function drawItemRow(page, index, item, y, font) {
+function drawItemRow(page, index, item, y, font, theme) {
     const descriptionLines = wrapText(safeText(item?.description || ''), 42);
     const rowHeight = Math.max(descriptionLines.length * 12 + 8, 20);
     const amount = Number(item?.qty || 0) * Number(item?.rate || 0) * (1 + Number(item?.tax || 0) / 100);
 
-    drawText(page, String(index + 1), PAGE_MARGIN, y, 10, font);
+    drawText(page, String(index + 1), PAGE_MARGIN + 8, y, 10, font, { color: theme.text });
     descriptionLines.forEach((line, lineIndex) => {
-        drawText(page, line, PAGE_MARGIN + 28, y - (lineIndex * 12), 10, font);
+        drawText(page, line, PAGE_MARGIN + 40, y - (lineIndex * 12), 10, font, { color: theme.text });
     });
-    drawText(page, String(item?.qty ?? 0), 305, y, 10, font);
-    drawText(page, formatFallbackMoney(item?.rate), 348, y, 10, font);
-    drawText(page, `${Number(item?.tax || 0)}%`, 420, y, 10, font);
-    drawText(page, formatFallbackMoney(amount), 476, y, 10, font);
+    drawText(page, String(item?.qty ?? 0), 306, y, 10, font, { color: theme.text });
+    drawText(page, formatFallbackMoney(item?.rate), 350, y, 10, font, { color: theme.text });
+    drawText(page, `${Number(item?.tax || 0)}%`, 420, y, 10, font, { color: theme.text });
+    drawText(page, formatFallbackMoney(amount), 486, y, 10, font, { color: theme.text });
 
-    drawRule(page, PAGE_MARGIN, y - rowHeight + 2, A4_WIDTH - PAGE_MARGIN);
+    drawRule(page, PAGE_MARGIN, y - rowHeight + 2, A4_WIDTH - PAGE_MARGIN, theme.line);
     return y - rowHeight;
 }
 
@@ -580,31 +560,100 @@ function drawTotals(page, invoiceData, y, fonts) {
     return y - 12;
 }
 
-function drawAmountRow(page, label, value, y, labelFont, valueFont, emphasize = false) {
-    drawText(page, safeText(label), 360, y, emphasize ? 12 : 10, labelFont);
-    drawText(page, safeText(value), 476, y, emphasize ? 12 : 10, valueFont);
+function drawBottomSummary(page, invoiceData, businessProfile, y, fonts, theme) {
+    const leftX = PAGE_MARGIN;
+    const summaryX = 335;
+    const notes = invoiceData.notes || '';
+    const terms = invoiceData.terms || '';
+    const hasInfoPanel = Boolean(notes || terms || hasBankDetails(businessProfile));
+
+    if (hasInfoPanel) {
+        drawFilledRect(page, leftX, Math.max(PAGE_MARGIN, y - 126), 250, 126, theme.primary);
+        let panelY = y - 20;
+        if (hasBankDetails(businessProfile)) {
+            panelY = drawText(page, 'Payment Info', leftX + 16, panelY, 11, fonts.bold, { color: '#ffffff' });
+            if (businessProfile.bankAccountName) panelY = drawText(page, safeText(`Account: ${businessProfile.bankAccountName}`), leftX + 16, panelY, 8, fonts.regular, { color: '#f8fafc' });
+            if (businessProfile.bankName) panelY = drawText(page, safeText(`Bank: ${businessProfile.bankName}`), leftX + 16, panelY, 8, fonts.regular, { color: '#f8fafc' });
+            if (businessProfile.bankAccountNumber) panelY = drawText(page, safeText(`A/C No: ${businessProfile.bankAccountNumber}`), leftX + 16, panelY, 8, fonts.regular, { color: '#f8fafc' });
+            if (businessProfile.bankIfsc) panelY = drawText(page, safeText(`IFSC: ${businessProfile.bankIfsc}`), leftX + 16, panelY, 8, fonts.regular, { color: '#f8fafc' });
+            if (businessProfile.bankUpi) panelY = drawText(page, safeText(`UPI: ${businessProfile.bankUpi}`), leftX + 16, panelY, 8, fonts.regular, { color: '#f8fafc' });
+        }
+        if (notes) {
+            panelY -= hasBankDetails(businessProfile) ? 6 : 0;
+            panelY = drawText(page, 'Notes', leftX + 16, panelY, 10, fonts.bold, { color: '#ffffff' });
+            panelY = drawParagraph(page, notes, leftX + 16, panelY, 8, fonts.regular, 210, { color: '#f8fafc' });
+        }
+        if (terms) {
+            panelY -= 4;
+            panelY = drawText(page, 'Terms', leftX + 16, panelY, 10, fonts.bold, { color: '#ffffff' });
+            drawParagraph(page, terms, leftX + 16, panelY, 8, fonts.regular, 210, { color: '#f8fafc' });
+        }
+    }
+
+    drawRule(page, summaryX, y + 8, A4_WIDTH - PAGE_MARGIN, theme.line);
+    y -= 8;
+    y = drawAmountRow(page, 'Sub Total:', formatFallbackMoney(invoiceData.subtotal), y, fonts.regular, fonts.bold, false, summaryX, theme);
+    y = drawAmountRow(page, 'Tax:', formatFallbackMoney(invoiceData.taxTotal), y, fonts.regular, fonts.bold, false, summaryX, theme);
+    y -= 4;
+    y = drawAmountRow(page, 'Total:', formatFallbackMoney(invoiceData.total), y, fonts.bold, fonts.bold, true, summaryX, theme);
+    drawRule(page, summaryX, y - 2, A4_WIDTH - PAGE_MARGIN, theme.text, 0.8);
+    drawRule(page, summaryX, Math.max(PAGE_MARGIN + 18, y - 42), summaryX + 112, theme.text, 0.8);
+    drawText(page, 'Authorised Sign', summaryX, Math.max(PAGE_MARGIN + 4, y - 58), 9, fonts.bold, { color: theme.text });
+    return y - 72;
+}
+
+function drawAmountRow(page, label, value, y, labelFont, valueFont, emphasize = false, x = 360, theme = getTemplateTheme()) {
+    drawText(page, safeText(label), x, y, emphasize ? 13 : 10, labelFont, { color: theme.text });
+    drawText(page, safeText(value), x + 128, y, emphasize ? 13 : 10, valueFont, { color: theme.text });
     return y - 16;
 }
 
-function drawParagraph(page, text, x, y, size, font, maxWidth) {
+function drawParagraph(page, text, x, y, size, font, maxWidth, options = {}) {
     const lines = wrapText(safeText(text), Math.max(18, Math.floor(maxWidth / 5.5)));
     lines.forEach(line => {
-        y = drawText(page, line, x, y, size, font);
+        y = drawText(page, line, x, y, size, font, options);
     });
     return y - 2;
 }
 
-function drawText(page, text, x, y, size, font) {
-    page.content.push(textCommand(text, x, y, size, font));
+function drawText(page, text, x, y, size, font, options = {}) {
+    page.content.push(textCommand(text, x, y, size, font, options));
     return y - Math.max(12, size + 4);
 }
 
-function drawRule(page, x1, y, x2) {
-    page.content.push(`q 0.5 w ${x1} ${y} m ${x2} ${y} l S Q`);
+function drawRule(page, x1, y, x2, color = '#111827', lineWidth = 0.5) {
+    page.content.push(`q ${pdfColor(color, 'RG')} ${lineWidth} w ${x1} ${y} m ${x2} ${y} l S Q`);
 }
 
-function textCommand(text, x, y, size, font) {
-    return `BT /${font} ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`;
+function drawFilledRect(page, x, y, width, height, color) {
+    page.content.push(`q ${pdfColor(color, 'rg')} ${x} ${y} ${width} ${height} re f Q`);
+}
+
+function textCommand(text, x, y, size, font, options = {}) {
+    const color = options.color ? `${pdfColor(options.color, 'rg')} ` : '';
+    return `BT ${color}/${font} ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`;
+}
+
+function pdfColor(color, operator) {
+    const { r, g, b } = parseHexColor(color);
+    return `${formatPdfNumber(r)} ${formatPdfNumber(g)} ${formatPdfNumber(b)} ${operator}`;
+}
+
+function parseHexColor(color = '#111827') {
+    const hex = String(color).trim().replace(/^#/, '');
+    const normalized = hex.length === 3
+        ? hex.split('').map(char => `${char}${char}`).join('')
+        : hex.padEnd(6, '0').slice(0, 6);
+
+    return {
+        r: parseInt(normalized.slice(0, 2), 16) / 255,
+        g: parseInt(normalized.slice(2, 4), 16) / 255,
+        b: parseInt(normalized.slice(4, 6), 16) / 255,
+    };
+}
+
+function formatPdfNumber(value) {
+    return Number(value || 0).toFixed(3).replace(/0+$/, '').replace(/\.$/, '') || '0';
 }
 
 function escapePdfText(value) {
