@@ -21,7 +21,7 @@ export function AppProvider({ children }) {
     }}>
       {children}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-[100] px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium animate-slide-in-up
+        <div className={`fixed bottom-4 left-4 right-4 z-[100] px-4 py-3 rounded-xl shadow-lg text-center text-white text-sm font-medium animate-slide-in-up sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-md sm:px-5
           ${toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : toast.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`}>
           {toast.message}
         </div>

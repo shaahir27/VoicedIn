@@ -11,7 +11,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        value: https://voicedin2.onrender.com
+        value: http://localhost:5173,http://127.0.0.1:5173,https://voicedin2.onrender.com,https://voicedin.lat,https://www.voicedin.lat
       - key: API_PUBLIC_URL
         value: https://voicedin.onrender.com
       - key: DATABASE_URL
@@ -27,6 +27,9 @@ services:
     rootDir: frontend
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://voicedin.onrender.com/api
     routes:
       - type: rewrite
         source: "/*"
