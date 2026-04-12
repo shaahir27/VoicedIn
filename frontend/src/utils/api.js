@@ -1,3 +1,5 @@
+import { clearAuthToken, getAuthToken } from './authToken';
+
 function normalizeApiUrl(value) {
     const fallback = import.meta.env?.PROD ? 'https://voicedin.onrender.com/api' : 'http://localhost:5000/api';
     const rawUrl = (value || fallback).trim().replace(/\/+$/, '');
@@ -34,7 +36,7 @@ async function readErrorMessage(response) {
 }
 
 export async function fetchApi(endpoint, options = {}) {
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     const headers = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -50,7 +52,7 @@ export async function fetchApi(endpoint, options = {}) {
         if (!response.ok) {
             if (response.status === 401) {
                 // Handle unauthorized (token expired, etc)
-                localStorage.removeItem('token');
+                clearAuthToken();
                 // You might want to reload or emit an event here in a real app
                 // window.location.href = '/login'; 
             }
@@ -67,7 +69,7 @@ export async function fetchApi(endpoint, options = {}) {
 }
 
 export async function fetchBlob(endpoint, options = {}) {
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     const { expectedTypes = [], ...fetchOptions } = options;
     const headers = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -82,7 +84,7 @@ export async function fetchBlob(endpoint, options = {}) {
 
         if (!response.ok) {
             if (response.status === 401) {
-                localStorage.removeItem('token');
+                clearAuthToken();
             }
             throw new Error(await readErrorMessage(response));
         }
@@ -136,7 +138,7 @@ export const api = {
     download: (endpoint, expectedTypes = []) => fetchBlob(endpoint, { method: 'GET', expectedTypes }),
     upload: async (endpoint, formData) => {
         // For file uploads, don't set Content-Type header (browser sets it automatically with boundary)
-        const token = localStorage.getItem('token');
+        const token = getAuthToken();
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
         const response = await fetch(`${API_URL}${endpoint}`, {
@@ -146,6 +148,9 @@ export const api = {
         });
 
         if (!response.ok) {
+            if (response.status === 401) {
+                clearAuthToken();
+            }
             throw new Error(await readErrorMessage(response));
         }
 

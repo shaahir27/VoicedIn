@@ -80,7 +80,7 @@ export default function SubscriptionPage() {
 
   const isActive = subscription?.status === 'active';
   const payment = subscription?.payment || {};
-  const price = Number(subscription?.price || payment.amount || 99);
+  const price = Number(subscription?.price || payment.amount || 49);
   const pendingRequest = subscription?.paymentRequest?.status === 'pending' ? subscription.paymentRequest : null;
 
   const features = [
@@ -150,12 +150,12 @@ export default function SubscriptionPage() {
                 Static QR payment
               </div>
               <h3 className="text-xl font-bold text-slate-900">Upgrade to Premium</h3>
-              <p className="text-sm text-slate-500 mt-2">Scan the QR and pay Rs. {payment.amount || 99}. After confirmation, your account status will switch to Premium.</p>
+              <p className="text-sm text-slate-500 mt-2">Scan the QR and pay Rs. {payment.amount || 49}. After confirmation, your account status will switch to Premium.</p>
 
               <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-4 text-sm text-slate-600 space-y-2">
                 <p><span className="font-semibold text-slate-800">Payee:</span> {payment.payeeName || 'VoicedIn'}</p>
                 {payment.upiId && <p><span className="font-semibold text-slate-800">UPI:</span> {payment.upiId}</p>}
-                <p><span className="font-semibold text-slate-800">Amount:</span> Rs. {payment.amount || 99}</p>
+                <p><span className="font-semibold text-slate-800">Amount:</span> Rs. {payment.amount || 49}</p>
                 <p className="text-xs text-slate-500">{payment.note || 'Premium is activated after payment confirmation.'}</p>
               </div>
 

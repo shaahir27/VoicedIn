@@ -22,7 +22,7 @@ const comparisons = [
   { feature: 'Invoice creation time', voicedin: 'Under 60 seconds', others: '5–10 minutes' },
   { feature: 'Client auto-fill', voicedin: '✓ Built-in', others: '✗ Manual entry' },
   { feature: 'Mobile experience', voicedin: 'Native-quality', others: 'Basic / broken' },
-  { feature: 'Pricing', voicedin: '₹99/month', others: '₹500–2000/month' },
+  { feature: 'Pricing', voicedin: '₹49/month', others: '₹500–2000/month' },
   { feature: 'Learning curve', voicedin: 'Zero', others: 'Hours of tutorials' },
   { feature: 'Duplicate invoices', voicedin: 'One click', others: 'Not available' },
 ];
@@ -35,7 +35,7 @@ const testimonials = [
 
 const faqs = [
   { q: 'Is voicedIn free to try?', a: 'Yes! You can try the demo with limited features — create up to 3 invoices and preview all templates. No credit card required.' },
-  { q: 'What does the Premium plan include?', a: 'Unlimited invoices, all templates, client memory, payment tracking, PDF/CSV/Excel exports, shareable links, and priority support — all for just ₹99/month.' },
+  { q: 'What does the Premium plan include?', a: 'Unlimited invoices, all templates, client memory, payment tracking, PDF/CSV/Excel exports, shareable links, and priority support — all for just ₹49/month.' },
   { q: 'Can I cancel anytime?', a: 'Absolutely. No lock-in contracts. Cancel your subscription anytime from the billing settings.' },
   { q: 'Does it work on mobile?', a: 'Yes! voicedIn is designed mobile-first. Create and manage invoices beautifully on any device.' },
   { q: 'Is my data secure?', a: 'Your data is encrypted and stored securely. We follow industry-standard security practices to protect your information.' },
@@ -76,7 +76,7 @@ export default function LandingPage() {
               <Button size="xl" variant="outline" icon={Zap}>Try Demo Free</Button>
             </Link>
             <Link to="/signup">
-              <Button size="xl" iconRight={ArrowRight}>Start for ₹99/mo</Button>
+              <Button size="xl" iconRight={ArrowRight}>Start for ₹49/mo</Button>
             </Link>
           </div>
 
@@ -217,7 +217,7 @@ export default function LandingPage() {
               <h3 className="text-xl font-bold text-slate-800 mb-1">Premium</h3>
               <p className="text-sm text-slate-500 mb-6">Everything you need</p>
               <div className="mb-6">
-                <span className="text-4xl font-extrabold text-slate-800">₹99</span>
+                <span className="text-4xl font-extrabold text-slate-800">₹49</span>
                 <span className="text-slate-500 text-sm">/month</span>
               </div>
               <ul className="space-y-3 mb-8">
@@ -301,7 +301,7 @@ export default function LandingPage() {
               <Button size="xl" variant="outline" className="!border-white/30 !text-white hover:!bg-white/10">Try Demo</Button>
             </Link>
             <Link to="/signup">
-              <Button size="xl" className="!bg-white !text-primary-600 hover:!bg-primary-50">Get Started — ₹99/mo</Button>
+              <Button size="xl" className="!bg-white !text-primary-600 hover:!bg-primary-50">Get Started — ₹49/mo</Button>
             </Link>
           </div>
         </div>

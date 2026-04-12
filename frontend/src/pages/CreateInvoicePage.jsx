@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import ShortcutHint from '../components/ui/ShortcutHint';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Badge from '../components/ui/Badge';
@@ -189,11 +190,11 @@ export default function CreateInvoicePage() {
             <p className="text-sm text-slate-500">{invoiceNumber}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => setShowPreview(!showPreview)} icon={showPreview ? EyeOff : Eye}>
             {showPreview ? 'Hide' : 'Preview'}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSaveDraft} icon={Save} data-shortcut-save="true">Save Draft</Button>
+          <Button variant="outline" size="sm" onClick={handleSaveDraft} icon={Save} data-shortcut-save="invoice">Save Draft</Button>
           <Button size="sm" onClick={handleGenerateInvoice} icon={FileText}>Generate</Button>
         </div>
       </div>
@@ -268,7 +269,7 @@ export default function CreateInvoicePage() {
 
           {/* Dates & Template */}
           <Card>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input label="Invoice Date" type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
               <Input label="Due Date" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
               <Select
@@ -316,7 +317,7 @@ export default function CreateInvoicePage() {
                       </button>
                     )}
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <div>
                       <label className="text-[10px] text-slate-400 mb-0.5 block">Qty</label>
                       <input type="number" min="1" value={item.qty} onChange={e => updateItem(i, 'qty', e.target.value)}
@@ -373,8 +374,13 @@ export default function CreateInvoicePage() {
           </Card>
 
           {/* Actions */}
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={handleSaveDraft} variant="outline" icon={Save} data-shortcut-save="true">Save Draft</Button>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+            <Button onClick={handleSaveDraft} variant="outline" icon={Save} data-shortcut-save="invoice" className="sm:w-auto">
+              <span className="inline-flex items-center gap-2">
+                Save Invoice
+                <ShortcutHint keys={['Ctrl', 'S']} />
+              </span>
+            </Button>
             <Button onClick={handleGenerateInvoice} icon={FileText}>Generate Invoice</Button>
             <Button onClick={handleDownloadPdf} variant="secondary" icon={Download}>Download PDF</Button>
             <Button onClick={handleCreateShareLink} variant="ghost" icon={Share2}>Share</Button>

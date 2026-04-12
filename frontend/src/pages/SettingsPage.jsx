@@ -9,11 +9,13 @@ import { useApp } from '../context/AppContext';
 import { api, assetUrl } from '../utils/api';
 
 export default function SettingsPage() {
-  const { showToast } = useApp();
+  const { showToast, setBrandLogoUrl } = useApp();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [business, setBusiness] = useState({ name: '', email: '', phone: '', address: '', website: '' });
   const [logoUrl, setLogoUrl] = useState(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
   const [tax, setTax] = useState({ gst: '', taxRate: '18', panNumber: '' });
   const [bank, setBank] = useState({
     bankAccountName: '',
@@ -37,6 +39,7 @@ export default function SettingsPage() {
           const p = profileRes.profile;
           setBusiness({ name: p.businessName || '', email: p.email || p.contactEmail || '', phone: p.phone || p.contactPhone || '', address: p.address || p.businessAddress || '', website: p.website || '' });
           setLogoUrl(p.logoUrl || null);
+          setBrandLogoUrl(p.logoUrl || null);
           setBank({
             bankAccountName: p.bankAccountName || '',
             bankName: p.bankName || '',
@@ -65,7 +68,13 @@ export default function SettingsPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [setBrandLogoUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+    };
+  }, [logoPreviewUrl]);
 
   const saveBusinessProfile = async () => {
     setSaving(true);
@@ -124,14 +133,29 @@ export default function SettingsPage() {
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+    const previewUrl = URL.createObjectURL(file);
+    setLogoPreviewUrl(previewUrl);
+    setBrandLogoUrl(previewUrl);
+
     const formData = new FormData();
     formData.append('logo', file);
+    setUploadingLogo(true);
     try {
       const data = await api.upload('/business-profile/logo', formData);
-      setLogoUrl(data.logoUrl);
+      const nextLogoUrl = `${data.logoUrl}?v=${Date.now()}`;
+      setLogoUrl(nextLogoUrl);
+      setBrandLogoUrl(nextLogoUrl);
+      setLogoPreviewUrl(null);
       showToast('Logo uploaded!');
     } catch (err) {
+      setLogoPreviewUrl(null);
+      setBrandLogoUrl(logoUrl || null);
       showToast(err.message || 'Failed to upload logo', 'error');
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = '';
     }
   };
 
@@ -153,13 +177,13 @@ export default function SettingsPage() {
             <label className="block text-sm font-medium text-slate-700 mb-2">Business Logo</label>
             <div className="flex items-center gap-4">
               <div className="w-20 h-20 rounded-2xl bg-primary-50 flex items-center justify-center border-2 border-dashed border-primary-200 overflow-hidden">
-                {logoUrl ? <img src={assetUrl(logoUrl)} alt="Logo" className="w-full h-full object-cover" /> : <Upload className="w-6 h-6 text-primary-400" />}
+                {logoPreviewUrl || logoUrl ? <img src={logoPreviewUrl || assetUrl(logoUrl)} alt="Business logo preview" className="w-full h-full object-contain p-2" /> : <Upload className="w-6 h-6 text-primary-400" />}
               </div>
               <div>
                 <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
                   <Upload className="w-4 h-4" />
-                  Upload Logo
-                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingLogo} />
                 </label>
                 <p className="text-xs text-slate-400 mt-1">PNG, JPG up to 2MB</p>
               </div>
@@ -174,7 +198,7 @@ export default function SettingsPage() {
           </div>
           <Input label="Address" value={business.address} onChange={e => setBusiness({ ...business, address: e.target.value })} className="mt-4" />
           <div className="flex justify-end mt-6">
-            <Button onClick={saveBusinessProfile} loading={saving} icon={Save} data-shortcut-save="true">Save Changes</Button>
+            <Button onClick={saveBusinessProfile} loading={saving} icon={Save}>Save Changes</Button>
           </div>
         </Card>
       ),
@@ -194,7 +218,7 @@ export default function SettingsPage() {
             <Input label="PAN Number" value={tax.panNumber} onChange={e => setTax({ ...tax, panNumber: e.target.value })} />
           </div>
           <div className="flex justify-end mt-6">
-            <Button onClick={saveTaxSettings} loading={saving} icon={Save} data-shortcut-save="true">Save Changes</Button>
+            <Button onClick={saveTaxSettings} loading={saving} icon={Save}>Save Changes</Button>
           </div>
         </Card>
       ),
@@ -216,7 +240,7 @@ export default function SettingsPage() {
             <Input label="UPI ID" value={bank.bankUpi} onChange={e => setBank({ ...bank, bankUpi: e.target.value })} />
           </div>
           <div className="flex justify-end mt-6">
-            <Button onClick={saveBankDetails} loading={saving} icon={Save} data-shortcut-save="true">Save Bank Details</Button>
+            <Button onClick={saveBankDetails} loading={saving} icon={Save}>Save Bank Details</Button>
           </div>
         </Card>
       ),
@@ -254,7 +278,7 @@ export default function SettingsPage() {
             />
           </div>
           <div className="flex justify-end mt-6">
-            <Button onClick={saveInvoiceSettings} loading={saving} icon={Save} data-shortcut-save="true">Save Changes</Button>
+            <Button onClick={saveInvoiceSettings} loading={saving} icon={Save}>Save Changes</Button>
           </div>
         </Card>
       ),

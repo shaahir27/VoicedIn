@@ -5,6 +5,7 @@ const AppContext = createContext(null);
 export function AppProvider({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [brandLogoUrl, setBrandLogoUrl] = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -18,6 +19,7 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       sidebarOpen, toggleSidebar, closeSidebar,
       toast, showToast,
+      brandLogoUrl, setBrandLogoUrl,
     }}>
       {children}
       {toast && (

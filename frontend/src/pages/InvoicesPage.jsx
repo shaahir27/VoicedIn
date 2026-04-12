@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Download, Link2, Eye, Copy, Grid3X3, List, Filter } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import ShortcutHint from '../components/ui/ShortcutHint';
 import Badge from '../components/ui/Badge';
 import SearchInput from '../components/ui/SearchInput';
 import Modal from '../components/ui/Modal';
@@ -79,10 +80,15 @@ export default function InvoicesPage() {
           <h1 className="text-xl font-bold text-slate-900">Invoices</h1>
           <p className="text-sm text-slate-500">{invoices.length} total · {invoices.filter(i => i.status === 'unpaid').length} unpaid</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" icon={Download} onClick={() => showToast('Exported as CSV')}>Export</Button>
           <Link to="/invoices/new">
-            <Button icon={Plus} size="sm">New Invoice</Button>
+            <Button icon={Plus} size="sm">
+              <span className="inline-flex items-center gap-2">
+                New Invoice
+                <ShortcutHint keys={['Ctrl', 'N']} />
+              </span>
+            </Button>
           </Link>
         </div>
       </div>
@@ -129,9 +135,9 @@ export default function InvoicesPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(inv => (
-            <Card key={inv.id} hover className="group">
-              <div className="flex items-start justify-between mb-3">
-                <div>
+            <Card key={inv.id} hover>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0">
                   <p className="text-sm font-bold text-slate-800">{inv.number}</p>
                   <p className="text-xs text-slate-400">{formatDate(inv.date)}</p>
                 </div>
@@ -139,21 +145,27 @@ export default function InvoicesPage() {
               </div>
               <p className="text-sm font-medium text-slate-700 mb-1">{inv.clientName}</p>
               <p className="text-xs text-slate-400 mb-4">{inv.company}</p>
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <div className="flex flex-col gap-3 pt-3 border-t border-slate-100">
                 <p className="text-lg font-bold text-slate-800">{formatCurrency(inv.total)}</p>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => setPreviewInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => setPreviewInvoice(inv)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer">
                     <Eye className="w-4 h-4 text-slate-400" />
+                    View
                   </button>
-                  <button onClick={() => handleShareInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" disabled={sharingInvoiceId === inv.id}>
+                  <button onClick={() => handleDownloadPdf(inv)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer">
+                    <Download className="w-4 h-4 text-slate-400" />
+                    Download
+                  </button>
+                  <button onClick={() => handleShareInvoice(inv)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60 cursor-pointer" disabled={sharingInvoiceId === inv.id}>
                     <Link2 className={`w-4 h-4 ${sharingInvoiceId === inv.id ? 'text-primary-500' : 'text-slate-400'}`} />
+                    Copy
                   </button>
-                  {(inv.status === 'unpaid' || inv.status === 'overdue') && (
-                    <button onClick={() => handleMarkPaid(inv)} className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-medium hover:bg-emerald-100 cursor-pointer">
-                      Mark Paid
-                    </button>
-                  )}
                 </div>
+                {(inv.status === 'unpaid' || inv.status === 'overdue') && (
+                  <button onClick={() => handleMarkPaid(inv)} className="w-full px-2 py-2 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-medium hover:bg-emerald-100 cursor-pointer">
+                    Mark Paid
+                  </button>
+                )}
               </div>
             </Card>
           ))}
@@ -182,7 +194,9 @@ export default function InvoicesPage() {
                     <td className="py-3 px-4 text-center"><Badge status={inv.status} /></td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setPreviewInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><Eye className="w-4 h-4 text-slate-400" /></button>
+                        <button onClick={() => setPreviewInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" title="View invoice"><Eye className="w-4 h-4 text-slate-400" /></button>
+                        <button onClick={() => handleDownloadPdf(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" title="Download PDF"><Download className="w-4 h-4 text-slate-400" /></button>
+                        <button onClick={() => handleShareInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" title="Copy link" disabled={sharingInvoiceId === inv.id}><Link2 className={`w-4 h-4 ${sharingInvoiceId === inv.id ? 'text-primary-500' : 'text-slate-400'}`} /></button>
                         {(inv.status === 'unpaid' || inv.status === 'overdue') && (
                           <button onClick={() => handleMarkPaid(inv)} className="text-xs text-emerald-600 font-medium hover:text-emerald-700 cursor-pointer">Mark Paid</button>
                         )}

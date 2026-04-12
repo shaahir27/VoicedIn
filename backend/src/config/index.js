@@ -30,7 +30,7 @@ const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
   },
   premiumPayment: {
-    amount: Number(process.env.PREMIUM_PAYMENT_AMOUNT || 99),
+    amount: Number(process.env.PREMIUM_PAYMENT_AMOUNT || 49),
     upiId: process.env.PREMIUM_PAYMENT_UPI_ID || '',
     payeeName: process.env.PREMIUM_PAYMENT_PAYEE_NAME || 'VoicedIn',
     qrUrl: process.env.PREMIUM_PAYMENT_QR_URL || '/premium-payment-qr.svg',

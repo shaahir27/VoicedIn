@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { IndianRupee, Clock, AlertTriangle, CheckCircle, CreditCard, Calendar } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle, CreditCard } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
-import SearchInput from '../components/ui/SearchInput';
 import { useInvoices } from '../context/InvoiceContext';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -15,7 +14,6 @@ import { formatDate, daysUntil, getRelativeTime } from '../utils/dateHelpers';
 export default function PaymentsPage() {
   const { invoices, payments, markAsPaid, stats } = useInvoices();
   const { showToast } = useApp();
-  const [search, setSearch] = useState('');
   const [showPayModal, setShowPayModal] = useState(null);
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payMethod, setPayMethod] = useState('UPI');
@@ -46,16 +44,16 @@ export default function PaymentsPage() {
       <p className="text-sm text-slate-500 mb-6">Track and manage all your payments</p>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
         {summaryCards.map((s, i) => (
           <Card key={i}>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
                 <s.icon className={`w-5 h-5 ${s.color}`} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-slate-500">{s.label}</p>
-                <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                <p className={`text-lg font-bold ${s.color} break-words`}>{s.value}</p>
               </div>
             </div>
           </Card>
@@ -72,14 +70,14 @@ export default function PaymentsPage() {
             <div className="space-y-3">
               {unpaidInvoices.map(inv => (
                 <div key={inv.id} className={`p-3 rounded-xl border ${inv.status === 'overdue' ? 'bg-red-50/30 border-red-100' : 'bg-amber-50/30 border-amber-100'}`}>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div>
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-800">{inv.number}</p>
                       <p className="text-xs text-slate-500">{inv.clientName}</p>
                     </div>
-                    <p className="text-sm font-bold text-slate-800">{formatCurrency(inv.total)}</p>
+                    <p className="text-sm font-bold text-slate-800 sm:text-right">{formatCurrency(inv.total)}</p>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <p className={`text-xs ${inv.status === 'overdue' ? 'text-red-500' : 'text-amber-600'}`}>
                       {inv.status === 'overdue'
                         ? `Overdue by ${Math.abs(daysUntil(inv.dueDate))} days`
@@ -101,12 +99,12 @@ export default function PaymentsPage() {
           ) : (
             <div className="space-y-3">
               {[...payments].sort((a, b) => new Date(b.date) - new Date(a.date)).map(pay => (
-                <div key={pay.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-3">
+                <div key={pay.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-xl hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
                       <CreditCard className="w-4 h-4 text-emerald-500" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-800">{pay.clientName}</p>
                       <p className="text-xs text-slate-400">{pay.invoiceNumber} · {formatDate(pay.date)} · {pay.method}</p>
                     </div>

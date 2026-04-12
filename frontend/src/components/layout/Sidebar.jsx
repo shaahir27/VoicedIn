@@ -21,7 +21,7 @@ const bottomItems = [
   { label: 'Settings', to: '/settings', icon: Settings },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ logoUrl = '' }) {
   const { sidebarOpen, closeSidebar } = useApp();
   const { user, isDemo } = useAuth();
 
@@ -40,7 +40,7 @@ export default function Sidebar() {
       `}>
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-50">
-          <Logo size="md" />
+          <Logo size="md" imageSrc={logoUrl} />
           <button onClick={closeSidebar} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
             <X className="w-5 h-5 text-slate-400" />
           </button>

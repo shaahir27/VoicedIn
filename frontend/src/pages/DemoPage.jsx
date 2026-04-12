@@ -214,10 +214,10 @@ export default function DemoPage() {
             <Crown className="w-8 h-8 text-primary-500" />
           </div>
           <h3 className="text-lg font-bold text-slate-800 mb-2">Unlock Full Access</h3>
-          <p className="text-sm text-slate-500 mb-6">Get clean PDF downloads, client memory, payment tracking, and more for just ₹99/month.</p>
+          <p className="text-sm text-slate-500 mb-6">Get clean PDF downloads, client memory, payment tracking, and more for just ₹49/month.</p>
           <div className="space-y-2">
             <Link to="/signup">
-              <Button fullWidth size="lg">Get Premium — ₹99/mo</Button>
+              <Button fullWidth size="lg">Get Premium — ₹49/mo</Button>
             </Link>
             <Button fullWidth variant="ghost" onClick={() => setShowUpgrade(false)}>Continue Demo</Button>
           </div>

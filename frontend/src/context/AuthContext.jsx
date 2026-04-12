@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { clearAuthToken, getAuthToken, setAuthToken } from '../utils/authToken';
 
 const AuthContext = createContext(null);
 
@@ -14,7 +15,7 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (token) {
       api.get('/users/me')
         .then(data => {
@@ -22,7 +23,7 @@ export function AuthProvider({ children }) {
           setIsDemo(resolveIsDemo(data.user));
         })
         .catch(() => {
-          localStorage.removeItem('token');
+          clearAuthToken();
         })
         .finally(() => setIsLoading(false));
     } else {
@@ -37,9 +38,9 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  const login = async (email, password) => {
+  const login = async (email, password, remember = true) => {
     const data = await api.post('/auth/login', { email, password });
-    localStorage.setItem('token', data.token);
+    setAuthToken(data.token, remember);
     setUser(data.user);
     setIsDemo(resolveIsDemo(data.user));
   };
@@ -47,7 +48,7 @@ export function AuthProvider({ children }) {
   const loginDemo = async () => {
     try {
       const data = await api.post('/auth/login', { email: 'alex@freelance.io', password: 'demo123' });
-      localStorage.setItem('token', data.token);
+      setAuthToken(data.token, true);
       setUser(data.user);
       setIsDemo(true);
     } catch (err) {
@@ -58,14 +59,14 @@ export function AuthProvider({ children }) {
 
   const signup = async (name, email, password) => {
     const data = await api.post('/auth/signup', { name, email, password });
-    localStorage.setItem('token', data.token);
+    setAuthToken(data.token, true);
     setUser(data.user);
     setIsDemo(resolveIsDemo(data.user));
   };
 
-  const loginWithGoogle = async (idToken) => {
+  const loginWithGoogle = async (idToken, remember = true) => {
     const data = await api.post('/auth/google', { idToken });
-    localStorage.setItem('token', data.token);
+    setAuthToken(data.token, remember);
     setUser(data.user);
     setIsDemo(resolveIsDemo(data.user));
   };
@@ -75,7 +76,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    clearAuthToken();
     setUser(null);
     setIsDemo(false);
   };
