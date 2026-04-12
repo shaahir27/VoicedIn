@@ -32,10 +32,10 @@ npm run dev
 The app uses a static QR payment flow instead of a payment provider checkout. Configure these values in `.env`:
 
 ```env
-PREMIUM_PAYMENT_AMOUNT=99
+PREMIUM_PAYMENT_AMOUNT=49
 PREMIUM_PAYMENT_UPI_ID=your-upi-id@bank
 PREMIUM_PAYMENT_PAYEE_NAME=Your Name
-PREMIUM_PAYMENT_QR_URL=/premium-payment-qr.svg
+PREMIUM_PAYMENT_QR_URL=/my-payment-qr.jpeg
 PREMIUM_PAYMENT_NOTE=Send payment screenshot after scanning the QR. Premium is activated after confirmation.
 ```
 

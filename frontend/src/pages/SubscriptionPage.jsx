@@ -9,10 +9,10 @@ import { api, assetUrl } from '../utils/api';
 import { formatDate } from '../utils/dateHelpers';
 
 function qrSrc(url) {
-  if (!url) return '/premium-payment-qr.svg';
+  if (!url) return '/my-payment-qr.jpeg';
   if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url;
   if (url.startsWith('/uploads/')) return assetUrl(url);
-  return url;
+  return url.startsWith('/') ? url : `/${url}`;
 }
 
 export default function SubscriptionPage() {
