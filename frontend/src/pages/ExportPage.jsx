@@ -8,6 +8,7 @@ import { useInvoices } from '../context/InvoiceContext';
 import { api } from '../utils/api';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/dateHelpers';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 function triggerDownload(blob, filename) {
   const url = window.URL.createObjectURL(new Blob([blob], { type: blob.type || 'application/octet-stream' }));
@@ -75,7 +76,7 @@ export default function ExportPage() {
       const data = await api.post('/share-links', { invoiceId: invoice.id });
       const path = data.url || `/share/${data.token}`;
       const link = path.startsWith('http') ? path : `${window.location.origin}${path}`;
-      await navigator.clipboard.writeText(link);
+      await copyTextToClipboard(link);
       showToast(`Copied link for ${invoice.number}`);
     } catch (err) {
       showToast(err.message || 'Failed to create invoice link', 'error');

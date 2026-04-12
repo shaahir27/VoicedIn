@@ -29,6 +29,9 @@ export function transformInvoice(row) {
         template: row.template,
         currency: row.currency,
         isDraft: row.is_draft,
+        includeBankDetails: row.include_bank_details === null || row.include_bank_details === undefined
+            ? null
+            : Boolean(row.include_bank_details),
         pdfUrl: row.pdf_url,
         items: row.items || [],
         createdAt: row.created_at,

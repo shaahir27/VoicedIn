@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Trash2, Eye, EyeOff, Save, Download, Share2, Copy, ArrowLeft, FileText, Sparkles, User
@@ -16,6 +16,7 @@ import { formatDate, formatDateISO } from '../utils/dateHelpers';
 import { templates } from '../data/templates';
 import { downloadInvoicePdf } from '../utils/downloadInvoicePdf';
 import { api } from '../utils/api';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 const emptyItem = { description: '', qty: 1, rate: 0, tax: 18 };
 
@@ -37,6 +38,35 @@ export default function CreateInvoicePage() {
   const [items, setItems] = useState([{ ...emptyItem }]);
   const [notes, setNotes] = useState('Thank you for your business!');
   const [template, setTemplate] = useState('modern');
+  const [includeBankDetails, setIncludeBankDetails] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    api.get('/settings')
+      .then(data => {
+        if (!isMounted || !data.settings) return;
+
+        const settings = data.settings;
+        setIncludeBankDetails(Boolean(settings.includeBankDetails));
+        if (settings.defaultTerms) setNotes(settings.defaultTerms);
+        if (settings.defaultTemplate) setTemplate(settings.defaultTemplate);
+        if (typeof settings.taxRate === 'number') {
+          setItems(prev => prev.map(item => (
+            item.description || Number(item.rate) > 0
+              ? item
+              : { ...item, tax: settings.taxRate }
+          )));
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load invoice defaults', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredClients = clients.filter(c =>
     c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
@@ -89,6 +119,7 @@ export default function CreateInvoicePage() {
       clientCompanyName: resolvedCompany,
       clientGstNumber: resolvedGstNumber,
       clientAddress: resolvedAddress,
+      includeBankDetails,
       status,
       date: invoiceDate,
       dueDate,
@@ -137,7 +168,7 @@ export default function CreateInvoicePage() {
       const data = await api.post('/share-links', { invoiceId: invoice.id });
       const path = data.url || `/share/${data.token}`;
       const link = path.startsWith('http') ? path : `${window.location.origin}${path}`;
-      await navigator.clipboard.writeText(link);
+      await copyTextToClipboard(link);
       showToast('Invoice link copied!');
       navigate('/invoices');
     } catch (err) {
@@ -162,7 +193,7 @@ export default function CreateInvoicePage() {
           <Button variant="ghost" size="sm" onClick={() => setShowPreview(!showPreview)} icon={showPreview ? EyeOff : Eye}>
             {showPreview ? 'Hide' : 'Preview'}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSaveDraft} icon={Save}>Save Draft</Button>
+          <Button variant="outline" size="sm" onClick={handleSaveDraft} icon={Save} data-shortcut-save="true">Save Draft</Button>
           <Button size="sm" onClick={handleGenerateInvoice} icon={FileText}>Generate</Button>
         </div>
       </div>
@@ -190,12 +221,16 @@ export default function CreateInvoicePage() {
                   onFocus={() => setShowClientSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
                 />
-              {showClientSuggestions && clientSearch && filteredClients.length > 0 && (
+              {showClientSuggestions && filteredClients.length > 0 && (
                 <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white rounded-xl border border-slate-200 shadow-lg max-h-48 overflow-y-auto">
                   {filteredClients.map(c => (
                     <button
                       key={c.id}
-                      onClick={() => selectClient(c)}
+                      type="button"
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        selectClient(c);
+                      }}
                       className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-50 last:border-0"
                     >
                       <p className="text-sm font-medium text-slate-800">{c.name}</p>
@@ -243,6 +278,18 @@ export default function CreateInvoicePage() {
                 options={templates.map(t => ({ value: t.id, label: t.name }))}
               />
             </div>
+            <label className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={includeBankDetails}
+                onChange={e => setIncludeBankDetails(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-medium text-slate-800">Include bank details in this invoice PDF</span>
+                <span className="block text-xs text-slate-500 mt-0.5">Uses the payment details saved in Settings.</span>
+              </span>
+            </label>
           </Card>
 
           {/* Line Items */}
@@ -327,7 +374,7 @@ export default function CreateInvoicePage() {
 
           {/* Actions */}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={handleSaveDraft} variant="outline" icon={Save}>Save Draft</Button>
+            <Button onClick={handleSaveDraft} variant="outline" icon={Save} data-shortcut-save="true">Save Draft</Button>
             <Button onClick={handleGenerateInvoice} icon={FileText}>Generate Invoice</Button>
             <Button onClick={handleDownloadPdf} variant="secondary" icon={Download}>Download PDF</Button>
             <Button onClick={handleCreateShareLink} variant="ghost" icon={Share2}>Share</Button>
@@ -414,6 +461,7 @@ export default function CreateInvoicePage() {
                     <div className="mt-8 pt-4 border-t border-slate-100">
                       <p className="text-xs text-slate-400 mb-1">Notes</p>
                       <p className="text-xs text-slate-500">{notes}</p>
+                      {includeBankDetails && <p className="text-xs text-slate-400 mt-2">Bank details will be included in the downloaded PDF.</p>}
                     </div>
                   )}
                 </div>

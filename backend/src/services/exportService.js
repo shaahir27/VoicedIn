@@ -30,7 +30,7 @@ function resolveBrowserExecutablePath() {
 export async function exportCSV(userId, filters = {}) {
     const invoices = await getFilteredInvoices(userId, filters);
 
-    const headers = ['Invoice Number', 'Client', 'Company', 'GST Number', 'Address', 'Date', 'Due Date', 'Status', 'Subtotal', 'Tax', 'Total', 'Paid Date', 'Template'];
+    const headers = ['Invoice Number', 'Client', 'Company', 'GST Number', 'Address', 'Date', 'Due Date', 'Status', 'Subtotal', 'Tax', 'Total', 'Paid Date', 'Template', 'PDF URL'];
     const rows = invoices.map(inv => [
         inv.number,
         inv.clientName,
@@ -45,6 +45,7 @@ export async function exportCSV(userId, filters = {}) {
         inv.total,
         inv.paidDate || '',
         inv.template,
+        publicFileUrl(inv.pdfUrl),
     ]);
 
     const csv = [headers.map(escapeCsv).join(','), ...rows.map(r => r.map(v => escapeCsv(v)).join(','))].join('\r\n');
@@ -67,7 +68,7 @@ export async function exportExcel(userId, filters = {}) {
 
     const XLSX = await import('xlsx');
     const wsData = [
-        ['Invoice Number', 'Client', 'Company', 'GST Number', 'Address', 'Date', 'Due Date', 'Status', 'Subtotal', 'Tax', 'Total', 'Paid Date'],
+        ['Invoice Number', 'Client', 'Company', 'GST Number', 'Address', 'Date', 'Due Date', 'Status', 'Subtotal', 'Tax', 'Total', 'Paid Date', 'PDF URL'],
         ...invoices.map(inv => [
             inv.number,
             inv.clientName,
@@ -81,6 +82,7 @@ export async function exportExcel(userId, filters = {}) {
             inv.taxTotal,
             inv.total,
             inv.paidDate,
+            publicFileUrl(inv.pdfUrl),
         ]),
     ];
 
@@ -91,7 +93,7 @@ export async function exportExcel(userId, filters = {}) {
     ws['!cols'] = [
         { wch: 18 }, { wch: 20 }, { wch: 25 }, { wch: 14 }, { wch: 30 },
         { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
-        { wch: 12 }, { wch: 12 },
+        { wch: 12 }, { wch: 12 }, { wch: 48 },
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
@@ -274,6 +276,14 @@ function escapeHtml(value) {
 function escapeCsv(value) {
     const text = String(value ?? '');
     return `"${text.replace(/"/g, '""')}"`;
+}
+
+function publicFileUrl(url) {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+
+    const baseUrl = (process.env.API_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
+    return baseUrl ? `${baseUrl}${url.startsWith('/') ? url : `/${url}`}` : url;
 }
 
 function validatePdfBuffer(buffer, label) {

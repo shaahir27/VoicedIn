@@ -21,7 +21,6 @@ export default function SettingsPage() {
     bankAccountNumber: '',
     bankIfsc: '',
     bankUpi: '',
-    includeBankDetails: false,
   });
   const [currency, setCurrency] = useState('INR');
   const [invoicePrefix, setInvoicePrefix] = useState('INV');
@@ -44,7 +43,6 @@ export default function SettingsPage() {
             bankAccountNumber: p.bankAccountNumber || '',
             bankIfsc: p.bankIfsc || '',
             bankUpi: p.bankUpi || '',
-            includeBankDetails: Boolean(p.includeBankDetails),
           });
         }
         if (settingsRes.settings) {
@@ -59,7 +57,6 @@ export default function SettingsPage() {
             bankAccountNumber: s.bankAccountNumber ?? prev.bankAccountNumber,
             bankIfsc: s.bankIfsc ?? prev.bankIfsc,
             bankUpi: s.bankUpi ?? prev.bankUpi,
-            includeBankDetails: Boolean(s.includeBankDetails ?? prev.includeBankDetails),
           }));
         }
       } catch (err) {
@@ -177,7 +174,7 @@ export default function SettingsPage() {
           </div>
           <Input label="Address" value={business.address} onChange={e => setBusiness({ ...business, address: e.target.value })} className="mt-4" />
           <div className="flex justify-end mt-6">
-            <Button onClick={saveBusinessProfile} loading={saving} icon={Save}>Save Changes</Button>
+            <Button onClick={saveBusinessProfile} loading={saving} icon={Save} data-shortcut-save="true">Save Changes</Button>
           </div>
         </Card>
       ),
@@ -197,7 +194,7 @@ export default function SettingsPage() {
             <Input label="PAN Number" value={tax.panNumber} onChange={e => setTax({ ...tax, panNumber: e.target.value })} />
           </div>
           <div className="flex justify-end mt-6">
-            <Button onClick={saveTaxSettings} loading={saving} icon={Save}>Save Changes</Button>
+            <Button onClick={saveTaxSettings} loading={saving} icon={Save} data-shortcut-save="true">Save Changes</Button>
           </div>
         </Card>
       ),
@@ -218,20 +215,8 @@ export default function SettingsPage() {
             <Input label="IFSC Code" value={bank.bankIfsc} onChange={e => setBank({ ...bank, bankIfsc: e.target.value.toUpperCase() })} />
             <Input label="UPI ID" value={bank.bankUpi} onChange={e => setBank({ ...bank, bankUpi: e.target.value })} />
           </div>
-          <label className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={bank.includeBankDetails}
-              onChange={e => setBank({ ...bank, includeBankDetails: e.target.checked })}
-              className="mt-1"
-            />
-            <span>
-              <span className="font-medium text-slate-800">Include bank details in invoice PDFs</span>
-              <span className="block text-xs text-slate-500 mt-0.5">Turn this off if you want PDFs without payment account details.</span>
-            </span>
-          </label>
           <div className="flex justify-end mt-6">
-            <Button onClick={saveBankDetails} loading={saving} icon={Save}>Save Bank Details</Button>
+            <Button onClick={saveBankDetails} loading={saving} icon={Save} data-shortcut-save="true">Save Bank Details</Button>
           </div>
         </Card>
       ),
@@ -269,7 +254,7 @@ export default function SettingsPage() {
             />
           </div>
           <div className="flex justify-end mt-6">
-            <Button onClick={saveInvoiceSettings} loading={saving} icon={Save}>Save Changes</Button>
+            <Button onClick={saveInvoiceSettings} loading={saving} icon={Save} data-shortcut-save="true">Save Changes</Button>
           </div>
         </Card>
       ),

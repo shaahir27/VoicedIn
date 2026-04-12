@@ -13,6 +13,7 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/dateHelpers';
 import { downloadInvoicePdf } from '../utils/downloadInvoicePdf';
 import { api } from '../utils/api';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 const statusFilters = [
   { value: 'all', label: 'All' },
@@ -62,7 +63,7 @@ export default function InvoicesPage() {
       const data = await api.post('/share-links', { invoiceId: inv.id });
       const path = data.url || `/share/${data.token}`;
       const link = path.startsWith('http') ? path : `${window.location.origin}${path}`;
-      await navigator.clipboard.writeText(link);
+      await copyTextToClipboard(link);
       showToast('Invoice link copied!');
     } catch (err) {
       showToast(err.message || 'Failed to create share link', 'error');

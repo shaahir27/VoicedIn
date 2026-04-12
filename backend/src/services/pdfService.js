@@ -30,50 +30,12 @@ function resolveBrowserExecutablePath() {
 }
 
 export async function generatePDF(invoiceData, businessProfile, templateId = 'modern', isDemo = false) {
-    const templatePath = path.join(__dirname, '..', 'templates', 'invoice', `${templateId}.html`);
-    let html;
+    const resolvedProfile = {
+        ...businessProfile,
+        includeBankDetails: invoiceData.includeBankDetails ?? businessProfile?.includeBankDetails,
+    };
 
-    try {
-        html = fs.readFileSync(templatePath, 'utf-8');
-    } catch {
-        html = fs.readFileSync(path.join(__dirname, '..', 'templates', 'invoice', 'modern.html'), 'utf-8');
-    }
-
-    html = prepareTemplateLayout(html, businessProfile);
-
-    html = html
-        .replace(/\{\{logoMarkup\}\}/g, buildLogoMarkup(businessProfile?.logoUrl))
-        .replace(/\{\{businessName\}\}/g, businessProfile?.businessName || 'Your Business')
-        .replace(/\{\{businessAddress\}\}/g, businessProfile?.address || '')
-        .replace(/\{\{businessEmail\}\}/g, businessProfile?.email || '')
-        .replace(/\{\{businessPhone\}\}/g, businessProfile?.phone || '')
-        .replace(/\{\{businessGST\}\}/g, businessProfile?.gst || '')
-        .replace(/\{\{logoUrl\}\}/g, businessProfile?.logoUrl || '')
-        .replace(/\{\{invoiceNumber\}\}/g, invoiceData.number || '')
-        .replace(/\{\{invoiceDate\}\}/g, invoiceData.date || '')
-        .replace(/\{\{dueDate\}\}/g, invoiceData.dueDate || '')
-        .replace(/\{\{clientName\}\}/g, invoiceData.clientName || '')
-        .replace(/\{\{clientCompany\}\}/g, invoiceData.clientCompanyName || invoiceData.company || invoiceData.clientDetails?.companyName || '')
-        .replace(/\{\{clientGstNumber\}\}/g, invoiceData.clientGstNumber || invoiceData.clientDetails?.gstNumber || '')
-        .replace(/\{\{clientAddress\}\}/g, invoiceData.clientAddress || invoiceData.clientDetails?.address || '')
-        .replace(/\{\{subtotal\}\}/g, formatINR(invoiceData.subtotal))
-        .replace(/\{\{taxTotal\}\}/g, formatINR(invoiceData.taxTotal))
-        .replace(/\{\{total\}\}/g, formatINR(invoiceData.total))
-        .replace(/\{\{notes\}\}/g, invoiceData.notes || '')
-        .replace(/\{\{terms\}\}/g, invoiceData.terms || '');
-
-    const itemRows = (invoiceData.items || []).map((item, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td>${item.description}</td>
-      <td>${item.qty}</td>
-      <td>${formatINR(item.rate)}</td>
-      <td>${item.tax}%</td>
-      <td>${formatINR(item.qty * item.rate * (1 + item.tax / 100))}</td>
-    </tr>
-  `).join('');
-    html = html.replace('{{itemRows}}', itemRows);
-    html = html.replace('{{bankDetailsBlock}}', buildBankDetailsHtml(businessProfile));
+    let html = buildInvoiceHtml(invoiceData, resolvedProfile, templateId);
 
     if (isDemo) {
         html = html.replace('</body>', `
@@ -104,7 +66,7 @@ export async function generatePDF(invoiceData, businessProfile, templateId = 'mo
             buffer: pdfBuffer,
         };
     } catch (browserErr) {
-        const pdfBuffer = buildFallbackPdf(invoiceData, businessProfile, isDemo);
+        const pdfBuffer = buildFallbackPdf(invoiceData, resolvedProfile, isDemo);
         validatePdfBuffer(pdfBuffer, 'Invoice PDF fallback');
         fs.writeFileSync(pdfPath, pdfBuffer);
         verifySavedPdf(pdfPath, 'Invoice PDF fallback');
@@ -151,26 +113,251 @@ async function generateBrowserPdf(html) {
     }
 }
 
-function prepareTemplateLayout(html, businessProfile) {
-    let nextHtml = html
-        .replace('</style>', `
-    .brand-logo { max-width: 112px; max-height: 72px; object-fit: contain; display: block; margin-bottom: 10px; }
-    .details-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin: 0 0 24px; }
-    .details-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; color: #475569; }
-    .details-card p { color: #334155; font-size: 12px; line-height: 1.5; margin-top: 2px; }
-  </style>`)
-        .replace(/<h1>\{\{businessName\}\}<\/h1>/, '{{logoMarkup}}<p><strong>Our Details</strong></p><h1>{{businessName}}</h1>')
-        .replace(/<h3>Bill To<\/h3>/g, '<h3>Billed To</h3>');
+function buildInvoiceHtml(invoiceData, businessProfile = {}, templateId = 'modern') {
+    const theme = getTemplateTheme(templateId);
+    const businessName = businessProfile.businessName || businessProfile.name || 'VoicedIn';
+    const clientCompany = invoiceData.clientCompanyName || invoiceData.company || invoiceData.clientDetails?.companyName || '';
+    const clientGst = invoiceData.clientGstNumber || invoiceData.clientDetails?.gstNumber || '';
+    const clientAddress = invoiceData.clientAddress || invoiceData.clientDetails?.address || '';
+    const terms = invoiceData.terms || businessProfile.defaultTerms || '';
+    const notes = invoiceData.notes || '';
+    const hasSidebarContent = Boolean(notes || terms);
+    const businessContact = [businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ');
+    const businessTax = [businessProfile.gst ? `GST: ${businessProfile.gst}` : '', businessProfile.panNumber ? `PAN: ${businessProfile.panNumber}` : ''].filter(Boolean).join(' | ');
+    const bankRows = buildBankDetailsRows(businessProfile);
+    const itemRows = (invoiceData.items || []).map((item, i) => {
+        const qty = Number(item.qty || 0);
+        const rate = Number(item.rate || 0);
+        const tax = Number(item.tax || 0);
+        const amount = qty * rate * (1 + tax / 100);
+        return `
+          <tr>
+            <td>${i + 1}</td>
+            <td class="description">${escapeHtml(item.description || '')}</td>
+            <td>${qty}</td>
+            <td>${formatINR(rate)}</td>
+            <td>${tax}%</td>
+            <td>${formatINR(amount)}</td>
+          </tr>
+        `;
+    }).join('');
 
-    if (!nextHtml.includes('{{bankDetailsBlock}}')) {
-        nextHtml = nextHtml.replace(/<table>/, '{{bankDetailsBlock}}\n  <table>');
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: ${theme.page};
+      color: ${theme.text};
+      font-family: ${theme.font};
+      font-size: 12px;
+      line-height: 1.45;
     }
-
-    if (!hasBankDetails(businessProfile)) {
-        nextHtml = nextHtml.replace('{{bankDetailsBlock}}', '');
+    .page { padding: 32px 38px; background: ${theme.page}; }
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 28px;
+      align-items: start;
+      margin-bottom: 22px;
+      border-bottom: 2px solid ${theme.primary};
+      padding-bottom: 18px;
     }
+    .brand-logo { max-width: 112px; max-height: 68px; object-fit: contain; display: block; margin-bottom: 10px; }
+    .business-name { font-size: 24px; font-weight: 800; letter-spacing: 0; margin: 0 0 6px; color: ${theme.primary}; }
+    .muted { color: ${theme.muted}; margin: 2px 0; }
+    .invoice-title { text-align: right; }
+    .invoice-title h2 { margin: 0 0 8px; font-size: 34px; letter-spacing: 2px; color: ${theme.primary}; }
+    .invoice-title p { margin: 3px 0; color: ${theme.muted}; }
+    .details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      margin-bottom: 24px;
+    }
+    .section-label {
+      margin: 0 0 8px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: ${theme.muted};
+      font-weight: 800;
+    }
+    .detail-card {
+      border-left: 3px solid ${theme.primary};
+      padding-left: 12px;
+      min-height: 82px;
+      background: ${theme.card};
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+    .detail-card strong { display: block; font-size: 15px; color: ${theme.text}; margin-bottom: 4px; }
+    .detail-card p { margin: 2px 0; color: ${theme.muted}; }
+    table { width: 100%; border-collapse: collapse; margin: 0 0 28px; }
+    thead { background: ${theme.primary}; color: #ffffff; }
+    th { padding: 11px 10px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .7px; }
+    td { padding: 11px 10px; border-bottom: 1px solid ${theme.line}; vertical-align: top; }
+    th:nth-child(1), td:nth-child(1), th:nth-child(3), td:nth-child(3), th:nth-child(5), td:nth-child(5) { text-align: center; }
+    th:nth-child(4), td:nth-child(4), th:nth-child(6), td:nth-child(6) { text-align: right; }
+    .description { width: 42%; }
+    .bottom {
+      display: grid;
+      grid-template-columns: ${hasSidebarContent ? '210px 1fr' : '1fr'};
+      gap: 30px;
+      align-items: stretch;
+      margin-top: 18px;
+    }
+    .dark-panel {
+      background: ${theme.primary};
+      color: #f9fafb;
+      min-height: 190px;
+      padding: 24px 22px;
+    }
+    .dark-panel h3 { margin: 0 0 9px; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; }
+    .dark-panel p { margin: 2px 0; color: #e5e7eb; font-size: 11px; }
+    .dark-panel .rule { height: 1px; background: rgba(255,255,255,.55); margin: 18px 0; }
+    .summary { padding-top: 2px; }
+    .payment { min-height: 72px; margin-bottom: 16px; }
+    .payment h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; color: ${theme.text}; }
+    .payment p { margin: 2px 0; color: ${theme.muted}; font-size: 11px; }
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 8px 0;
+      border-bottom: 1px solid ${theme.line};
+      color: ${theme.muted};
+      font-weight: 700;
+    }
+    .grand-total {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 0 26px;
+      font-size: 17px;
+      color: ${theme.text};
+      font-weight: 900;
+    }
+    .signature { margin-top: 18px; width: 210px; border-top: 1px solid ${theme.text}; padding-top: 9px; font-weight: 800; letter-spacing: .4px; }
+    .footer { margin-top: 20px; color: #9ca3af; font-size: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="topbar">
+      <div>
+        ${buildLogoMarkup(businessProfile.logoUrl)}
+        <h1 class="business-name">${escapeHtml(businessName)}</h1>
+      </div>
+      <div class="invoice-title">
+        <h2>INVOICE</h2>
+        ${invoiceData.number ? `<p><strong>${escapeHtml(invoiceData.number)}</strong></p>` : ''}
+        ${invoiceData.date ? `<p>Date: ${escapeHtml(invoiceData.date)}</p>` : ''}
+        ${invoiceData.dueDate ? `<p>Due: ${escapeHtml(invoiceData.dueDate)}</p>` : ''}
+        ${invoiceData.status ? `<p>Status: ${escapeHtml(invoiceData.status)}</p>` : ''}
+      </div>
+    </section>
 
-    return nextHtml;
+    <section class="details-grid">
+      <div class="detail-card">
+        <p class="section-label">From</p>
+        <strong>${escapeHtml(businessName)}</strong>
+        ${businessProfile.address ? `<p>${escapeHtml(businessProfile.address)}</p>` : ''}
+        ${businessContact ? `<p>${escapeHtml(businessContact)}</p>` : ''}
+        ${businessTax ? `<p>${escapeHtml(businessTax)}</p>` : ''}
+      </div>
+      <div class="detail-card">
+        <p class="section-label">Billed To</p>
+        ${invoiceData.clientName ? `<strong>${escapeHtml(invoiceData.clientName)}</strong>` : ''}
+        ${clientCompany ? `<p>${escapeHtml(clientCompany)}</p>` : ''}
+        ${clientGst ? `<p>GST: ${escapeHtml(clientGst)}</p>` : ''}
+        ${clientAddress ? `<p>${escapeHtml(clientAddress)}</p>` : ''}
+      </div>
+    </section>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>Description</th><th>Qty</th><th>Rate</th><th>Tax</th><th>Amount</th></tr>
+      </thead>
+      <tbody>${itemRows || '<tr><td colspan="6"></td></tr>'}</tbody>
+    </table>
+
+    <section class="bottom">
+      ${hasSidebarContent ? `<aside class="dark-panel">
+        ${notes ? `<h3>Notes</h3><p>${escapeHtml(notes)}</p>` : ''}
+        ${notes && terms ? '<div class="rule"></div>' : ''}
+        ${terms ? `<h3>Terms & Conditions</h3><p>${escapeHtml(terms)}</p>` : ''}
+      </aside>` : ''}
+      <section class="summary">
+        ${bankRows ? `<div class="payment">
+          <h3>Payment Info</h3>
+          ${bankRows}
+        </div>` : ''}
+        <div class="total-row"><span>Sub Total:</span><span>${formatINR(invoiceData.subtotal)}</span></div>
+        <div class="total-row"><span>Tax:</span><span>${formatINR(invoiceData.taxTotal)}</span></div>
+        <div class="grand-total"><span>Total:</span><span>${formatINR(invoiceData.total)}</span></div>
+        <div class="signature">Authorised Sign</div>
+      </section>
+    </section>
+    <p class="footer">Generated by VoicedIn</p>
+  </main>
+</body>
+</html>`;
+}
+
+function getTemplateTheme(templateId = 'modern') {
+    const themes = {
+        modern: {
+            primary: '#4f46e5',
+            page: '#ffffff',
+            card: '#f8fafc',
+            text: '#111827',
+            muted: '#4b5563',
+            line: '#e5e7eb',
+            font: 'Inter, "Segoe UI", Arial, sans-serif',
+        },
+        classic: {
+            primary: '#111827',
+            page: '#ffffff',
+            card: '#ffffff',
+            text: '#111827',
+            muted: '#4b5563',
+            line: '#d1d5db',
+            font: 'Georgia, "Times New Roman", serif',
+        },
+        minimal: {
+            primary: '#0f172a',
+            page: '#ffffff',
+            card: '#ffffff',
+            text: '#0f172a',
+            muted: '#64748b',
+            line: '#e2e8f0',
+            font: '"Segoe UI", Arial, sans-serif',
+        },
+        elegant: {
+            primary: '#7c3aed',
+            page: '#fdfcff',
+            card: '#f5f3ff',
+            text: '#1f1633',
+            muted: '#5b5368',
+            line: '#ddd6fe',
+            font: 'Georgia, "Times New Roman", serif',
+        },
+        bold: {
+            primary: '#047857',
+            page: '#fbfffd',
+            card: '#ecfdf5',
+            text: '#052e2b',
+            muted: '#31534c',
+            line: '#bbf7d0',
+            font: '"Segoe UI", Arial, sans-serif',
+        },
+    };
+
+    return themes[templateId] || themes.modern;
 }
 
 function buildFallbackPdf(invoiceData, businessProfile, isDemo) {
@@ -184,8 +371,23 @@ function buildFallbackPdf(invoiceData, businessProfile, isDemo) {
     pages.push(page);
 
     page.cursorY = drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts);
+    page.cursorY = drawSectionHeader(page, page.cursorY, 'From', fonts.bold);
+    page.cursorY = drawText(page, safeText(businessProfile?.businessName || businessProfile?.name || 'VoicedIn'), PAGE_MARGIN, page.cursorY, 11, fonts.regular);
+    if (businessProfile?.address) {
+        page.cursorY = drawParagraph(page, businessProfile.address, PAGE_MARGIN, page.cursorY, 10, fonts.regular, 320);
+    }
+    if (businessProfile?.email || businessProfile?.phone) {
+        page.cursorY = drawText(page, safeText([businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ')), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
+    }
+    if (businessProfile?.gst || businessProfile?.panNumber) {
+        page.cursorY = drawText(page, safeText([businessProfile.gst ? `GST: ${businessProfile.gst}` : '', businessProfile.panNumber ? `PAN: ${businessProfile.panNumber}` : ''].filter(Boolean).join(' | ')), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
+    }
+    page.cursorY -= 8;
+
     page.cursorY = drawSectionHeader(page, page.cursorY, 'Billed To', fonts.bold);
-    page.cursorY = drawText(page, safeText(invoiceData.clientName || 'Client Name'), PAGE_MARGIN, page.cursorY, 11, fonts.regular);
+    if (invoiceData.clientName) {
+        page.cursorY = drawText(page, safeText(invoiceData.clientName), PAGE_MARGIN, page.cursorY, 11, fonts.regular);
+    }
     const clientCompany = invoiceData.clientCompanyName || invoiceData.company || invoiceData.clientDetails?.companyName;
     if (clientCompany) {
         page.cursorY = drawText(page, safeText(clientCompany), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
@@ -197,25 +399,6 @@ function buildFallbackPdf(invoiceData, businessProfile, isDemo) {
         page.cursorY = drawParagraph(page, invoiceData.clientAddress || invoiceData.clientDetails?.address, PAGE_MARGIN, page.cursorY, 10, fonts.regular, 320);
     }
     page.cursorY -= 10;
-    if (hasBankDetails(businessProfile)) {
-        page.cursorY = drawSectionHeader(page, page.cursorY, 'Bank Account Details', fonts.bold);
-        if (businessProfile.bankAccountName) {
-            page.cursorY = drawText(page, safeText(`Account Name: ${businessProfile.bankAccountName}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankName) {
-            page.cursorY = drawText(page, safeText(`Bank: ${businessProfile.bankName}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankAccountNumber) {
-            page.cursorY = drawText(page, safeText(`Account No: ${businessProfile.bankAccountNumber}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankIfsc) {
-            page.cursorY = drawText(page, safeText(`IFSC: ${businessProfile.bankIfsc}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        if (businessProfile.bankUpi) {
-            page.cursorY = drawText(page, safeText(`UPI: ${businessProfile.bankUpi}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
-        }
-        page.cursorY -= 8;
-    }
     page.cursorY = drawTableHeader(page, page.cursorY, fonts.bold);
 
     const items = invoiceData.items || [];
@@ -241,6 +424,32 @@ function buildFallbackPdf(invoiceData, businessProfile, isDemo) {
 
     page.cursorY -= 6;
     page.cursorY = drawTotals(page, invoiceData, page.cursorY, fonts);
+
+    if (hasBankDetails(businessProfile)) {
+        if (page.cursorY - 74 < PAGE_MARGIN) {
+            page = createPage();
+            pages.push(page);
+            page.cursorY = drawContinuationHeader(page, invoiceData, businessProfile, fonts);
+        }
+
+        page.cursorY -= 8;
+        page.cursorY = drawSectionHeader(page, page.cursorY, 'Payment Info', fonts.bold);
+        if (businessProfile.bankAccountName) {
+            page.cursorY = drawText(page, safeText(`Account: ${businessProfile.bankAccountName}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
+        }
+        if (businessProfile.bankName) {
+            page.cursorY = drawText(page, safeText(`Bank: ${businessProfile.bankName}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
+        }
+        if (businessProfile.bankAccountNumber) {
+            page.cursorY = drawText(page, safeText(`A/C No: ${businessProfile.bankAccountNumber}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
+        }
+        if (businessProfile.bankIfsc) {
+            page.cursorY = drawText(page, safeText(`IFSC: ${businessProfile.bankIfsc}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
+        }
+        if (businessProfile.bankUpi) {
+            page.cursorY = drawText(page, safeText(`UPI: ${businessProfile.bankUpi}`), PAGE_MARGIN, page.cursorY, 10, fonts.regular);
+        }
+    }
 
     if (invoiceData.notes || invoiceData.terms) {
         if (page.cursorY - 64 < PAGE_MARGIN) {
@@ -272,25 +481,20 @@ function createPage() {
 }
 
 function drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts) {
-    let y = A4_HEIGHT - PAGE_MARGIN;
-    const businessName = safeText(businessProfile?.businessName || 'Your Business');
-
-    y = drawText(page, 'Our Details', PAGE_MARGIN, y, 10, fonts.bold);
-    y = drawText(page, businessName, PAGE_MARGIN, y, 18, fonts.bold);
-    if (businessProfile?.address) {
-        y = drawText(page, safeText(businessProfile.address), PAGE_MARGIN, y, 10, fonts.regular);
-    }
-    if (businessProfile?.email || businessProfile?.phone) {
-        y = drawText(page, safeText([businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ')), PAGE_MARGIN, y, 10, fonts.regular);
-    }
-    if (businessProfile?.gst) {
-        y = drawText(page, safeText(`GST: ${businessProfile.gst}`), PAGE_MARGIN, y, 10, fonts.regular);
-    }
-
     drawText(page, 'INVOICE', 408, A4_HEIGHT - PAGE_MARGIN, 20, fonts.bold);
-    y = drawText(page, safeText(`Invoice No: ${invoiceData.number || ''}`), 408, A4_HEIGHT - PAGE_MARGIN - 26, 11, fonts.regular);
-    y = drawText(page, safeText(`Date: ${invoiceData.date || ''}`), 408, A4_HEIGHT - PAGE_MARGIN - 42, 10, fonts.regular);
-    y = drawText(page, safeText(`Due: ${invoiceData.dueDate || ''}`), 408, A4_HEIGHT - PAGE_MARGIN - 56, 10, fonts.regular);
+    let detailY = A4_HEIGHT - PAGE_MARGIN - 26;
+    if (invoiceData.number) {
+        detailY = drawText(page, safeText(`Invoice No: ${invoiceData.number}`), 408, detailY, 10, fonts.regular);
+    }
+    if (invoiceData.date) {
+        detailY = drawText(page, safeText(`Date: ${invoiceData.date}`), 408, detailY, 10, fonts.regular);
+    }
+    if (invoiceData.dueDate) {
+        detailY = drawText(page, safeText(`Due: ${invoiceData.dueDate}`), 408, detailY, 10, fonts.regular);
+    }
+    if (invoiceData.status) {
+        drawText(page, safeText(`Status: ${invoiceData.status}`), 408, detailY, 10, fonts.regular);
+    }
 
     if (isDemo) {
         drawText(page, 'DEMO - NOT VALID', 408, A4_HEIGHT - PAGE_MARGIN - 74, 10, fonts.bold);
@@ -299,14 +503,15 @@ function drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts) {
     drawRule(page, PAGE_MARGIN, A4_HEIGHT - 120, A4_WIDTH - PAGE_MARGIN);
 
     let cursorY = A4_HEIGHT - 146;
-    cursorY = drawSectionHeader(page, cursorY, 'Bill To', fonts.bold);
     return cursorY;
 }
 
 function drawContinuationHeader(page, invoiceData, businessProfile, fonts) {
     let y = A4_HEIGHT - PAGE_MARGIN;
-    y = drawText(page, safeText(businessProfile?.businessName || 'Your Business'), PAGE_MARGIN, y, 16, fonts.bold);
-    y = drawText(page, safeText(`Invoice: ${invoiceData.number || ''}`), PAGE_MARGIN, y, 10, fonts.regular);
+    y = drawText(page, safeText(businessProfile?.businessName || 'VoicedIn'), PAGE_MARGIN, y, 16, fonts.bold);
+    if (invoiceData.number) {
+        y = drawText(page, safeText(`Invoice: ${invoiceData.number}`), PAGE_MARGIN, y, 10, fonts.regular);
+    }
     y = drawText(page, 'Continued', PAGE_MARGIN, y, 10, fonts.bold);
     drawRule(page, PAGE_MARGIN, y - 10, A4_WIDTH - PAGE_MARGIN);
     return y - 24;
@@ -330,7 +535,7 @@ function drawTableHeader(page, y, fonts) {
 }
 
 function drawItemRow(page, index, item, y, font) {
-    const descriptionLines = wrapText(safeText(item?.description || 'Item'), 42);
+    const descriptionLines = wrapText(safeText(item?.description || ''), 42);
     const rowHeight = Math.max(descriptionLines.length * 12 + 8, 20);
     const amount = Number(item?.qty || 0) * Number(item?.rate || 0) * (1 + Number(item?.tax || 0) / 100);
 
@@ -436,7 +641,7 @@ function wrapText(text, maxChars) {
 }
 
 function estimateRowHeight(item) {
-    const lines = wrapText(safeText(item?.description || 'Item'), 42);
+    const lines = wrapText(safeText(item?.description || ''), 42);
     return Math.max(lines.length * 12 + 8, 20);
 }
 
@@ -515,20 +720,16 @@ function buildLogoMarkup(logoUrl) {
     return src ? `<img class="brand-logo" src="${src}" alt="Company logo" />` : '';
 }
 
-function buildBankDetailsHtml(profile = {}) {
-    if (!hasBankDetails(profile)) {
-        return '';
-    }
+function buildBankDetailsRows(profile = {}) {
+    if (!hasBankDetails(profile)) return '';
 
-    return `
-  <div class="details-card">
-    <h3>Bank Account Details</h3>
-    ${profile.bankAccountName ? `<p><strong>Account Name:</strong> ${profile.bankAccountName}</p>` : ''}
-    ${profile.bankName ? `<p><strong>Bank:</strong> ${profile.bankName}</p>` : ''}
-    ${profile.bankAccountNumber ? `<p><strong>Account No:</strong> ${profile.bankAccountNumber}</p>` : ''}
-    ${profile.bankIfsc ? `<p><strong>IFSC:</strong> ${profile.bankIfsc}</p>` : ''}
-    ${profile.bankUpi ? `<p><strong>UPI:</strong> ${profile.bankUpi}</p>` : ''}
-  </div>`;
+    return [
+        profile.bankAccountName ? `<p><strong>Account:</strong> ${escapeHtml(profile.bankAccountName)}</p>` : '',
+        profile.bankName ? `<p><strong>Bank:</strong> ${escapeHtml(profile.bankName)}</p>` : '',
+        profile.bankAccountNumber ? `<p><strong>A/C No:</strong> ${escapeHtml(profile.bankAccountNumber)}</p>` : '',
+        profile.bankIfsc ? `<p><strong>IFSC:</strong> ${escapeHtml(profile.bankIfsc)}</p>` : '',
+        profile.bankUpi ? `<p><strong>UPI:</strong> ${escapeHtml(profile.bankUpi)}</p>` : '',
+    ].filter(Boolean).join('');
 }
 
 function hasBankDetails(profile = {}) {
@@ -536,6 +737,15 @@ function hasBankDetails(profile = {}) {
         profile.includeBankDetails &&
         (profile.bankAccountName || profile.bankName || profile.bankAccountNumber || profile.bankIfsc || profile.bankUpi)
     );
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function resolveLogoSource(logoUrl) {

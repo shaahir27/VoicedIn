@@ -35,15 +35,16 @@ export async function createInvoice(userId, data, isDemo = false) {
     const clientCompanyName = data.clientCompanyName || data.companyName || data.company_name || company || '';
     const clientGstNumber = data.clientGstNumber || data.gstNumber || data.gst_number || '';
     const clientAddress = data.clientAddress || data.address || '';
+    const includeBankDetails = await resolveIncludeBankDetails(userId, data.includeBankDetails);
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
         const { rows } = await client.query(
-            `INSERT INTO invoices (user_id, client_id, number, client_name, company, client_company_name, client_gst_number, client_address, status, date, due_date, subtotal, tax_total, total, notes, terms, template, currency, is_draft)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING *`,
-            [userId, data.clientId || null, number, data.clientName, company, clientCompanyName, clientGstNumber, clientAddress, status, data.date, data.dueDate || null, subtotal, taxTotal, total, data.notes || '', data.terms || '', data.template || 'modern', data.currency || 'INR', data.isDraft || false]
+            `INSERT INTO invoices (user_id, client_id, number, client_name, company, client_company_name, client_gst_number, client_address, status, date, due_date, subtotal, tax_total, total, notes, terms, template, currency, is_draft, include_bank_details)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *`,
+            [userId, data.clientId || null, number, data.clientName, company, clientCompanyName, clientGstNumber, clientAddress, status, data.date, data.dueDate || null, subtotal, taxTotal, total, data.notes || '', data.terms || '', data.template || 'modern', data.currency || 'INR', data.isDraft || false, includeBankDetails]
         );
         const invoice = rows[0];
 
@@ -137,9 +138,10 @@ export async function updateInvoice(userId, invoiceId, data) {
          notes = COALESCE($14, notes),
          terms = COALESCE($15, terms),
          template = COALESCE($16, template),
-         is_draft = COALESCE($17, is_draft)
-       WHERE id = $18 AND user_id = $19 RETURNING *`,
-            [data.clientId, data.clientName, data.company, data.clientCompanyName, data.clientGstNumber, data.clientAddress, data.status, data.date, data.dueDate, data.paidDate, subtotal, taxTotal, total, data.notes, data.terms, data.template, data.isDraft, invoiceId, userId]
+         is_draft = COALESCE($17, is_draft),
+         include_bank_details = COALESCE($18, include_bank_details)
+       WHERE id = $19 AND user_id = $20 RETURNING *`,
+            [data.clientId, data.clientName, data.company, data.clientCompanyName, data.clientGstNumber, data.clientAddress, data.status, data.date, data.dueDate, data.paidDate, subtotal, taxTotal, total, data.notes, data.terms, data.template, data.isDraft, data.includeBankDetails, invoiceId, userId]
         );
         if (rows.length === 0) throw new NotFoundError('Invoice');
 
@@ -282,9 +284,22 @@ export async function duplicateInvoice(userId, invoiceId) {
         terms: original.terms,
         template: original.template,
         isDraft: true,
+        includeBankDetails: original.includeBankDetails,
         number: newNumber,
     });
     return newInvoice;
+}
+
+async function resolveIncludeBankDetails(userId, includeBankDetails) {
+    if (typeof includeBankDetails === 'boolean') {
+        return includeBankDetails;
+    }
+
+    const { rows } = await pool.query(
+        'SELECT include_bank_details FROM business_profiles WHERE user_id = $1',
+        [userId]
+    );
+    return Boolean(rows[0]?.include_bank_details);
 }
 
 export async function getLastInvoiceForClient(userId, clientId) {

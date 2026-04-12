@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS business_profiles (
   bank_account_number VARCHAR(64) DEFAULT '',
   bank_ifsc VARCHAR(32) DEFAULT '',
   bank_upi VARCHAR(255) DEFAULT '',
-  include_bank_details BOOLEAN DEFAULT false,
+  include_bank_details BOOLEAN,
   timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   template VARCHAR(20) DEFAULT 'modern',
   currency VARCHAR(5) DEFAULT 'INR',
   is_draft BOOLEAN DEFAULT true,
+  include_bank_details BOOLEAN DEFAULT false,
   pdf_url TEXT,
   share_token VARCHAR(64),
   created_at TIMESTAMPTZ DEFAULT NOW(),
