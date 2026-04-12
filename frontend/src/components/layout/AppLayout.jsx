@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Keyboard, LogOut, Menu, Settings, X } from 'lucide-react';
+import { Keyboard, LogOut, Menu, Search, Settings, X, LayoutDashboard, FileText, Users, CreditCard, Palette, Download, Crown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
@@ -29,7 +29,32 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState('');
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  const commandItems = [
+    { label: 'Dashboard', hint: 'Go home', to: '/dashboard', icon: LayoutDashboard },
+    { label: 'New Invoice', hint: 'Ctrl + N', to: '/invoices/new', icon: FileText },
+    { label: 'Invoices', hint: 'Open invoices', to: '/invoices', icon: FileText },
+    { label: 'Clients', hint: 'Open clients', to: '/clients', icon: Users },
+    { label: 'Payments', hint: 'Open payments', to: '/payments', icon: CreditCard },
+    { label: 'Templates', hint: 'Open templates', to: '/templates', icon: Palette },
+    { label: 'Export', hint: 'Open export', to: '/export', icon: Download },
+    { label: 'Subscription', hint: 'Open plan', to: '/subscription', icon: Crown },
+    { label: 'Settings', hint: 'Open profile', to: '/settings', icon: Settings },
+  ];
+
+  const filteredCommands = commandItems.filter(command =>
+    command.label.toLowerCase().includes(commandQuery.trim().toLowerCase())
+  );
+
+  const runCommand = (command) => {
+    if (!command) return;
+    setCommandPaletteOpen(false);
+    setCommandQuery('');
+    navigate(command.to);
+  };
 
   const getPageTitle = () => {
     const path = location.pathname;
@@ -67,6 +92,11 @@ export default function AppLayout() {
       const isShortcutKey = event.ctrlKey || event.metaKey;
 
       if (event.key === 'Escape') {
+        if (commandPaletteOpen) {
+          setCommandPaletteOpen(false);
+          setCommandQuery('');
+          return;
+        }
         if (shortcutsOpen) {
           setShortcutsOpen(false);
           return;
@@ -75,13 +105,20 @@ export default function AppLayout() {
         closeSidebar();
       }
 
+      if (isShortcutKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandPaletteOpen(open => !open);
+        return;
+      }
+
       if (!isShortcutKey && !event.altKey && event.key === '?' && !isEditableElement(activeElement)) {
         event.preventDefault();
         setShortcutsOpen(open => !open);
         return;
       }
 
-      if (isShortcutKey && event.key.toLowerCase() === 'n') {
+      if ((isShortcutKey && event.key.toLowerCase() === 'n') || (!isShortcutKey && !event.altKey && event.key.toLowerCase() === 'n')) {
+        if (isEditableElement(activeElement)) return;
         event.preventDefault();
         navigate('/invoices/new');
         return;
@@ -100,7 +137,7 @@ export default function AppLayout() {
 
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [closeSidebar, navigate, shortcutsOpen]);
+  }, [closeSidebar, commandPaletteOpen, navigate, shortcutsOpen]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -150,6 +187,57 @@ export default function AppLayout() {
             </div>
           </div>
         </header>
+
+        {commandPaletteOpen && (
+          <div className="fixed inset-0 z-[90] flex items-start justify-center bg-slate-950/30 px-4 pt-24 backdrop-blur-sm" onClick={() => setCommandPaletteOpen(false)}>
+            <div
+              className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              onClick={event => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="command-palette-title"
+            >
+              <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  autoFocus
+                  value={commandQuery}
+                  onChange={event => setCommandQuery(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') runCommand(filteredCommands[0]);
+                  }}
+                  placeholder="Search pages..."
+                  className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                />
+                <kbd className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-400">Esc</kbd>
+              </div>
+              <div className="max-h-80 overflow-y-auto p-2">
+                {filteredCommands.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-slate-400">No matching shortcut</p>
+                ) : filteredCommands.map(command => (
+                  <button
+                    key={command.to}
+                    type="button"
+                    onClick={() => runCommand(command)}
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm hover:bg-slate-50"
+                  >
+                    <span className="flex items-center gap-3 font-medium text-slate-700">
+                      <command.icon className="h-4 w-4 text-slate-400" />
+                      {command.label}
+                    </span>
+                    <span className="text-xs text-slate-400">{command.hint}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-400">
+                <span><kbd className="rounded border border-slate-200 px-1.5 py-0.5">Ctrl K</kbd> commands</span>
+                <span><kbd className="rounded border border-slate-200 px-1.5 py-0.5">Ctrl N</kbd> new invoice</span>
+                <span><kbd className="rounded border border-slate-200 px-1.5 py-0.5">?</kbd> shortcuts</span>
+                <span><kbd className="rounded border border-slate-200 px-1.5 py-0.5">Ctrl S</kbd> save</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {shortcutsOpen && (
           <div className="fixed inset-0 z-[90] flex items-start justify-center bg-slate-950/30 px-4 pt-24 backdrop-blur-sm" onClick={() => setShortcutsOpen(false)}>

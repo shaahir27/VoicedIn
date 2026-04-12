@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Plus, Download, Link2, Eye, Copy, Grid3X3, List, Filter } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import ShortcutHint from '../components/ui/ShortcutHint';
 import Badge from '../components/ui/Badge';
 import SearchInput from '../components/ui/SearchInput';
 import Modal from '../components/ui/Modal';
@@ -83,12 +82,7 @@ export default function InvoicesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" icon={Download} onClick={() => showToast('Exported as CSV')}>Export</Button>
           <Link to="/invoices/new">
-            <Button icon={Plus} size="sm">
-              <span className="inline-flex items-center gap-2">
-                New Invoice
-                <ShortcutHint keys={['Ctrl', 'N']} />
-              </span>
-            </Button>
+            <Button icon={Plus} size="sm">New Invoice</Button>
           </Link>
         </div>
       </div>
