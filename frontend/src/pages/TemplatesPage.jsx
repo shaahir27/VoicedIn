@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Star, Eye } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -7,15 +7,39 @@ import Modal from '../components/ui/Modal';
 import { templates } from '../data/templates';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatCurrency';
+import { api } from '../utils/api';
 
 export default function TemplatesPage() {
   const { showToast } = useApp();
   const [selected, setSelected] = useState('modern');
   const [previewTemplate, setPreviewTemplate] = useState(null);
+  const [savingTemplate, setSavingTemplate] = useState('');
 
-  const handleSelect = (id) => {
-    setSelected(id);
-    showToast(`${templates.find(t => t.id === id)?.name} template selected`);
+  useEffect(() => {
+    let isMounted = true;
+    api.get('/settings')
+      .then(data => {
+        if (!isMounted) return;
+        if (data.settings?.defaultTemplate) setSelected(data.settings.defaultTemplate);
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSelect = async (id) => {
+    setSavingTemplate(id);
+    try {
+      await api.put('/settings/invoice', { defaultTemplate: id });
+      setSelected(id);
+      showToast(`${templates.find(t => t.id === id)?.name} template selected`);
+    } catch (err) {
+      showToast(err.message || 'Failed to save template', 'error');
+    } finally {
+      setSavingTemplate('');
+    }
   };
 
   return (
@@ -86,9 +110,10 @@ export default function TemplatesPage() {
               fullWidth
               variant={selected === tmpl.id ? 'primary' : 'outline'}
               icon={selected === tmpl.id ? Check : undefined}
+              disabled={savingTemplate === tmpl.id}
               onClick={() => handleSelect(tmpl.id)}
             >
-              {selected === tmpl.id ? 'Selected' : 'Use Template'}
+              {savingTemplate === tmpl.id ? 'Saving...' : selected === tmpl.id ? 'Selected' : 'Use Template'}
             </Button>
           </Card>
         ))}

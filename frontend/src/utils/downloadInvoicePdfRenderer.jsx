@@ -12,6 +12,59 @@ const theme = {
   panelText: '#f9fafb',
 };
 
+const templateThemes = {
+  modern: {
+    primary: '#2563EB',
+    accent: '#0E7490',
+    text: '#111827',
+    muted: '#64748b',
+    line: '#BFDBFE',
+    soft: '#DBEAFE',
+    panelText: '#f9fafb',
+    page: '#ffffff',
+  },
+  classic: {
+    primary: '#111827',
+    accent: '#6B7280',
+    text: '#111827',
+    muted: '#4b5563',
+    line: '#d1d5db',
+    soft: '#F3F4F6',
+    panelText: '#f9fafb',
+    page: '#ffffff',
+  },
+  minimal: {
+    primary: '#0F766E',
+    accent: '#0F172A',
+    text: '#0f172a',
+    muted: '#64748b',
+    line: '#99F6E4',
+    soft: '#F0FDFA',
+    panelText: '#f8fafc',
+    page: '#ffffff',
+  },
+  elegant: {
+    primary: '#BE123C',
+    accent: '#831843',
+    text: '#2D1320',
+    muted: '#7F1D1D',
+    line: '#FFE4E6',
+    soft: '#FFF1F2',
+    panelText: '#fff7f8',
+    page: '#fffafa',
+  },
+  bold: {
+    primary: '#16A34A',
+    accent: '#14532D',
+    text: '#052e2b',
+    muted: '#31534c',
+    line: '#86EFAC',
+    soft: '#DCFCE7',
+    panelText: '#f8fffb',
+    page: '#fbfffd',
+  },
+};
+
 const styles = StyleSheet.create({
   page: {
     padding: 34,
@@ -30,8 +83,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   brandBlock: {
-    width: 190,
-    minHeight: 98,
+    width: 188,
+    minHeight: 104,
     backgroundColor: theme.primary,
     padding: 20,
     justifyContent: 'center',
@@ -55,7 +108,7 @@ const styles = StyleSheet.create({
   invoiceMeta: {
     flex: 1,
     alignItems: 'flex-end',
-    paddingTop: 8,
+    justifyContent: 'center',
   },
   invoiceTitle: {
     fontSize: 32,
@@ -75,15 +128,15 @@ const styles = StyleSheet.create({
   detailGrid: {
     flexDirection: 'row',
     gap: 18,
-    marginBottom: 24,
+    marginBottom: 18,
   },
   detailCard: {
     flex: 1,
     backgroundColor: theme.soft,
     borderLeftWidth: 3,
     borderLeftColor: theme.accent,
-    padding: 12,
-    minHeight: 92,
+    padding: 14,
+    minHeight: 112,
   },
   sectionLabel: {
     color: theme.muted,
@@ -96,15 +149,15 @@ const styles = StyleSheet.create({
   detailName: {
     fontSize: 13,
     fontFamily: 'Helvetica-Bold',
-    marginBottom: 4,
+    marginBottom: 5,
   },
   detailText: {
     color: theme.muted,
-    marginBottom: 3,
-    lineHeight: 1.35,
+    marginBottom: 4,
+    lineHeight: 1.28,
   },
   table: {
-    marginBottom: 24,
+    marginBottom: 18,
   },
   tableHeader: {
     flexDirection: 'row',
@@ -134,14 +187,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 26,
     alignItems: 'stretch',
-    marginTop: 4,
+    marginTop: 2,
   },
   sidePanel: {
-    width: 210,
+    width: 218,
     backgroundColor: theme.primary,
     color: theme.panelText,
     padding: 18,
-    minHeight: 150,
+    minHeight: 166,
   },
   sideTitle: {
     fontSize: 10,
@@ -178,8 +231,8 @@ const styles = StyleSheet.create({
     color: theme.text,
   },
   signature: {
-    marginTop: 22,
-    width: 160,
+    marginTop: 18,
+    width: 170,
     borderTopWidth: 1,
     borderTopColor: theme.text,
     paddingTop: 8,
@@ -197,25 +250,34 @@ const styles = StyleSheet.create({
   },
   demoWatermark: {
     position: 'absolute',
-    top: 330,
-    left: 85,
-    fontSize: 64,
+    top: 22,
+    right: 18,
+    fontSize: 12,
     fontFamily: 'Helvetica-Bold',
-    color: '#fee2e2',
-    transform: 'rotate(-28deg)',
+    color: '#ef4444',
+    transform: 'rotate(-12deg)',
   },
 });
 
-export async function downloadInvoicePdf(invoiceId, invoiceNumber) {
-  const [invoiceRes, profileRes, settingsRes] = await Promise.all([
-    api.get(`/invoices/${invoiceId}`),
-    api.get('/business-profile'),
-    api.get('/settings'),
-  ]);
-
-  const invoice = invoiceRes.invoice;
-  const businessProfile = mergeProfile(profileRes.profile, settingsRes.settings);
-  const blob = await pdf(<InvoicePdfDocument invoice={invoice} businessProfile={businessProfile} />).toBlob();
+export async function downloadInvoicePdf(invoiceOrId, invoiceNumber, options = {}) {
+  const isInvoiceObject = invoiceOrId && typeof invoiceOrId === 'object' && !Array.isArray(invoiceOrId);
+  const invoiceId = isInvoiceObject ? invoiceOrId?.id : invoiceOrId;
+  const invoice = isInvoiceObject ? invoiceOrId : (await api.get(`/invoices/${invoiceOrId}`)).invoice;
+  let businessProfile = options.businessProfile;
+  if (!businessProfile) {
+    const [profileRes, settingsRes] = await Promise.all([
+      api.get('/business-profile'),
+      api.get('/settings'),
+    ]);
+    businessProfile = mergeProfile(profileRes.profile, settingsRes.settings);
+  }
+  const blob = await pdf(
+    <InvoicePdfDocument
+      invoice={invoice}
+      businessProfile={businessProfile}
+      showDemoWatermark={Boolean(options.showDemoWatermark)}
+    />
+  ).toBlob();
 
   if (!blob || blob.size === 0) {
     throw new Error('Generated an empty PDF file');
@@ -225,15 +287,16 @@ export async function downloadInvoicePdf(invoiceId, invoiceNumber) {
   triggerDownload(blob, `invoice-${safeFilePart(invoice?.number || invoiceNumber || invoiceId)}.pdf`);
 }
 
-function InvoicePdfDocument({ invoice, businessProfile }) {
+function InvoicePdfDocument({ invoice, businessProfile, showDemoWatermark = false }) {
   const items = invoice?.items || [];
+  const pdfTheme = getPdfTemplateTheme(invoice?.template);
   const businessName = businessProfile.businessName || businessProfile.name || '';
   const clientCompany = invoice?.clientCompanyName || invoice?.company || invoice?.clientDetails?.companyName || '';
   const clientGst = invoice?.clientGstNumber || invoice?.clientDetails?.gstNumber || '';
   const clientAddress = invoice?.clientAddress || invoice?.clientDetails?.address || '';
   const includeBankDetails = invoice?.includeBankDetails ?? businessProfile.includeBankDetails;
   const currency = invoice?.currency || businessProfile.currency || 'INR';
-  const isDemo = Boolean(invoice?.isDemo || businessProfile?.isDemo);
+  const isDemo = Boolean(showDemoWatermark);
   const logoSrc = getPdfLogoSource(businessProfile.logoUrl);
   const showSidePanel = Boolean(
     invoice?.notes ||
@@ -247,51 +310,50 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
       author={businessName || 'VoicedIn'}
       subject="Invoice"
     >
-      <Page size="A4" style={styles.page} wrap>
-        {isDemo ? <Text style={styles.demoWatermark} fixed>DEMO - NOT VALID</Text> : null}
-        <View style={styles.header} fixed>
-          <View style={styles.brandBlock}>
+      <Page size="A4" style={[styles.page, { backgroundColor: pdfTheme.page, color: pdfTheme.text }]} wrap>
+        {isDemo ? <Text style={styles.demoWatermark} fixed>DEMO COPY</Text> : null}
+        <View style={[styles.header, { borderBottomColor: pdfTheme.primary }]} fixed>
+          <View style={[styles.brandBlock, { backgroundColor: pdfTheme.primary }]}>
             {logoSrc ? <Image src={logoSrc} style={styles.logo} /> : null}
             {businessName ? <Text style={styles.brandName}>{businessName}</Text> : null}
-            <Text style={styles.brandSubtle}>Invoice</Text>
+            <Text style={[styles.brandSubtle, { color: pdfTheme.panelText }]}>Invoice</Text>
           </View>
           <View style={styles.invoiceMeta}>
-            <Text style={styles.invoiceTitle}>INVOICE</Text>
+            <Text style={[styles.invoiceTitle, { color: pdfTheme.primary }]}>INVOICE</Text>
             {invoice?.number ? <Text style={[styles.metaLine, styles.metaStrong]}>{invoice.number}</Text> : null}
-            {invoice?.date ? <Text style={styles.metaLine}>Date: {invoice.date}</Text> : null}
-            {invoice?.dueDate ? <Text style={styles.metaLine}>Due: {invoice.dueDate}</Text> : null}
-            {invoice?.status ? <Text style={styles.metaLine}>Status: {invoice.status}</Text> : null}
-            <Text style={styles.metaLine}>Currency: {currency}</Text>
+            {invoice?.date ? <Text style={[styles.metaLine, { color: pdfTheme.muted }]}>Date: {invoice.date}</Text> : null}
+            {invoice?.dueDate ? <Text style={[styles.metaLine, { color: pdfTheme.muted }]}>Due: {invoice.dueDate}</Text> : null}
+            {invoice?.status ? <Text style={[styles.metaLine, { color: pdfTheme.muted }]}>Status: {invoice.status}</Text> : null}
+            <Text style={[styles.metaLine, { color: pdfTheme.muted }]}>Currency: {currency}</Text>
           </View>
         </View>
 
         <View style={styles.detailGrid}>
-          <View style={styles.detailCard}>
-            <Text style={styles.sectionLabel}>From</Text>
-            {businessName ? <Text style={styles.detailName}>{businessName}</Text> : null}
-            {businessProfile.address ? <Text style={styles.detailText}>{businessProfile.address}</Text> : null}
+          <View style={[styles.detailCard, { backgroundColor: pdfTheme.soft, borderLeftColor: pdfTheme.accent }]}>
+            <Text style={[styles.sectionLabel, { color: pdfTheme.muted }]}>From</Text>
+            {businessProfile.address ? <Text style={[styles.detailText, { color: pdfTheme.muted }]}>{businessProfile.address}</Text> : null}
             {businessProfile.email || businessProfile.phone ? (
-              <Text style={styles.detailText}>{[businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ')}</Text>
+              <Text style={[styles.detailText, { color: pdfTheme.muted }]}>{[businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ')}</Text>
             ) : null}
             {businessProfile.gst || businessProfile.panNumber ? (
-              <Text style={styles.detailText}>{[
+              <Text style={[styles.detailText, { color: pdfTheme.muted }]}>{[
                 businessProfile.gst ? `GST: ${businessProfile.gst}` : '',
                 businessProfile.panNumber ? `PAN: ${businessProfile.panNumber}` : '',
               ].filter(Boolean).join(' | ')}</Text>
             ) : null}
           </View>
 
-          <View style={styles.detailCard}>
-            <Text style={styles.sectionLabel}>Billed To</Text>
+          <View style={[styles.detailCard, { backgroundColor: pdfTheme.soft, borderLeftColor: pdfTheme.accent }]}>
+            <Text style={[styles.sectionLabel, { color: pdfTheme.muted }]}>Billed To</Text>
             {invoice?.clientName ? <Text style={styles.detailName}>{invoice.clientName}</Text> : null}
-            {clientCompany ? <Text style={styles.detailText}>{clientCompany}</Text> : null}
-            {clientGst ? <Text style={styles.detailText}>GST: {clientGst}</Text> : null}
-            {clientAddress ? <Text style={styles.detailText}>{clientAddress}</Text> : null}
+            {clientCompany ? <Text style={[styles.detailText, { color: pdfTheme.muted }]}>{clientCompany}</Text> : null}
+            {clientGst ? <Text style={[styles.detailText, { color: pdfTheme.muted }]}>GST: {clientGst}</Text> : null}
+            {clientAddress ? <Text style={[styles.detailText, { color: pdfTheme.muted }]}>{clientAddress}</Text> : null}
           </View>
         </View>
 
         <View style={styles.table}>
-          <View style={styles.tableHeader} fixed>
+          <View style={[styles.tableHeader, { backgroundColor: pdfTheme.primary }]} fixed>
             <Text style={styles.colIndex}>#</Text>
             <Text style={styles.colDescription}>Description</Text>
             <Text style={styles.colQty}>Qty</Text>
@@ -300,12 +362,12 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
             <Text style={styles.colAmount}>Amount</Text>
           </View>
           {items.length ? items.map((item, index) => (
-            <View key={`${item.id || item.description || 'item'}-${index}`} style={styles.tableRow} wrap={false}>
+            <View key={`${item.id || item.description || 'item'}-${index}`} style={[styles.tableRow, { borderBottomColor: pdfTheme.line }]} wrap={false}>
               <Text style={styles.colIndex}>{index + 1}</Text>
               <Text style={styles.colDescription}>{item.description || ''}</Text>
               <Text style={styles.colQty}>{formatNumber(item.qty)}</Text>
               <Text style={styles.colRate}>{formatMoney(item.rate, currency)}</Text>
-              <Text style={styles.colTax}>{formatNumber(item.tax)}%</Text>
+              <Text style={styles.colTax}>{formatNumber(item.tax)}</Text>
               <Text style={styles.colAmount}>{formatMoney(lineAmount(item), currency)}</Text>
             </View>
           )) : (
@@ -317,7 +379,7 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
 
         <View style={styles.bottom} wrap={false}>
           {showSidePanel ? (
-            <View style={styles.sidePanel}>
+            <View style={[styles.sidePanel, { backgroundColor: pdfTheme.primary, color: pdfTheme.panelText }]}>
               {includeBankDetails && hasBankDetails(businessProfile) ? (
                 <BankDetails businessProfile={businessProfile} />
               ) : null}
@@ -337,15 +399,15 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
           ) : null}
 
           <View style={styles.summary}>
-            <View style={styles.totalRow}>
+            <View style={[styles.totalRow, { borderBottomColor: pdfTheme.line, color: pdfTheme.muted }]}>
               <Text>Subtotal:</Text>
               <Text>{formatMoney(invoice?.subtotal, currency)}</Text>
             </View>
-            <View style={styles.totalRow}>
+            <View style={[styles.totalRow, { borderBottomColor: pdfTheme.line, color: pdfTheme.muted }]}>
               <Text>Tax:</Text>
               <Text>{formatMoney(invoice?.taxTotal, currency)}</Text>
             </View>
-            <View style={styles.grandTotal}>
+            <View style={[styles.grandTotal, { color: pdfTheme.text }]}>
               <Text>Total ({currency}):</Text>
               <Text>{formatMoney(invoice?.total, currency)}</Text>
             </View>
@@ -387,6 +449,10 @@ function mergeProfile(profile = {}, settings = {}) {
 
 function hasBankDetails(profile = {}) {
   return Boolean(profile.bankAccountName || profile.bankName || profile.bankAccountNumber || profile.bankIfsc || profile.bankUpi);
+}
+
+function getPdfTemplateTheme(templateId = 'modern') {
+  return templateThemes[templateId] || templateThemes.modern;
 }
 
 function getPdfLogoSource(logoUrl) {

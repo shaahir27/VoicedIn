@@ -119,7 +119,20 @@ export function InvoiceProvider({ children }) {
 
   const updateClient = useCallback(async (id, updates) => {
     const data = await api.put(`/clients/${id}`, updates);
-    setClients(prev => prev.map(c => c.id === id ? data.client : c));
+    let mergedClient = data.client;
+    setClients(prev => prev.map(c => {
+      if (c.id !== id) return c;
+
+      mergedClient = {
+        ...c,
+        ...data.client,
+        totalInvoices: data.client.totalInvoices ?? c.totalInvoices ?? 0,
+        totalRevenue: data.client.totalRevenue ?? c.totalRevenue ?? 0,
+        outstanding: data.client.outstanding ?? c.outstanding ?? 0,
+      };
+      return mergedClient;
+    }));
+    return mergedClient;
   }, []);
 
   const deleteClient = useCallback(async (id) => {

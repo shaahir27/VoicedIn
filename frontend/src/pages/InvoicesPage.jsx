@@ -8,6 +8,7 @@ import Badge from '../components/ui/Badge';
 import SearchInput from '../components/ui/SearchInput';
 import EmptyState from '../components/ui/EmptyState';
 import { useInvoices } from '../context/InvoiceContext';
+import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/dateHelpers';
@@ -27,6 +28,7 @@ const getItemTotal = (item) => item.lineTotal || Number(item.qty || 0) * Number(
 
 export default function InvoicesPage() {
   const { invoices, markAsPaid, deleteInvoice, loadingData, dataError } = useInvoices();
+  const { isDemo } = useAuth();
   const { showToast } = useApp();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -34,6 +36,7 @@ export default function InvoicesPage() {
   const [previewInvoice, setPreviewInvoice] = useState(null);
   const [sharingInvoiceId, setSharingInvoiceId] = useState(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState(null);
+  const [invoicePendingDelete, setInvoicePendingDelete] = useState(null);
 
   useEffect(() => {
     if (!previewInvoice) return undefined;
@@ -69,8 +72,13 @@ export default function InvoicesPage() {
   };
 
   const handleDownloadPdf = async (inv) => {
+    if (isDemo && invoices.length > 3) {
+      showToast('Demo is limited to 3 invoices. Upgrade to download more PDFs.', 'error');
+      return;
+    }
+
     try {
-      await downloadInvoicePdf(inv.id, inv.number);
+      await downloadInvoicePdf(inv.id, inv.number, { showDemoWatermark: isDemo });
       showToast(`${inv.number} downloaded as PDF`);
     } catch (err) {
       showToast(err.message || 'Failed to download PDF', 'error');
@@ -92,14 +100,19 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleDeleteInvoice = async (inv) => {
-    const confirmed = window.confirm(`Delete invoice ${inv.number}? This cannot be undone.`);
-    if (!confirmed) return;
+  const requestDeleteInvoice = (inv) => {
+    setInvoicePendingDelete(inv);
+  };
+
+  const handleDeleteInvoice = async () => {
+    const inv = invoicePendingDelete;
+    if (!inv) return;
 
     setDeletingInvoiceId(inv.id);
     try {
       await deleteInvoice(inv.id);
       if (previewInvoice?.id === inv.id) setPreviewInvoice(null);
+      setInvoicePendingDelete(null);
       showToast(`${inv.number} deleted`);
     } catch (err) {
       showToast(err.message || 'Failed to delete invoice', 'error');
@@ -196,7 +209,7 @@ export default function InvoicesPage() {
                     <Link2 className={`w-4 h-4 ${sharingInvoiceId === inv.id ? 'text-primary-500' : 'text-slate-400'}`} />
                     Copy
                   </button>
-                  <button type="button" onClick={() => handleDeleteInvoice(inv)} className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-60 cursor-pointer" disabled={deletingInvoiceId === inv.id}>
+                  <button type="button" onClick={() => requestDeleteInvoice(inv)} className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-60 cursor-pointer" disabled={deletingInvoiceId === inv.id}>
                     <Trash2 className="w-4 h-4" />
                     {deletingInvoiceId === inv.id ? 'Deleting...' : 'Delete'}
                   </button>
@@ -240,7 +253,7 @@ export default function InvoicesPage() {
                         <Link to={`/invoices/${inv.id}/edit`} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" title="Edit invoice"><Pencil className="w-4 h-4 text-slate-400" /></Link>
                         <button type="button" onClick={() => handleDownloadPdf(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" title="Download PDF"><Download className="w-4 h-4 text-slate-400" /></button>
                         <button type="button" onClick={() => handleShareInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" title="Copy link" disabled={sharingInvoiceId === inv.id}><Link2 className={`w-4 h-4 ${sharingInvoiceId === inv.id ? 'text-primary-500' : 'text-slate-400'}`} /></button>
-                        <button type="button" onClick={() => handleDeleteInvoice(inv)} className="p-1.5 rounded-lg hover:bg-red-50 cursor-pointer" title="Delete invoice" disabled={deletingInvoiceId === inv.id}><Trash2 className="w-4 h-4 text-red-400" /></button>
+                        <button type="button" onClick={() => requestDeleteInvoice(inv)} className="p-1.5 rounded-lg hover:bg-red-50 cursor-pointer" title="Delete invoice" disabled={deletingInvoiceId === inv.id}><Trash2 className="w-4 h-4 text-red-400" /></button>
                         {(inv.status === 'unpaid' || inv.status === 'overdue') && (
                           <button type="button" onClick={() => handleMarkPaid(inv)} className="text-xs text-emerald-600 font-medium hover:text-emerald-700 cursor-pointer">Mark Paid</button>
                         )}
@@ -360,13 +373,58 @@ export default function InvoicesPage() {
               </Link>
               <Button variant="outline" icon={Download} fullWidth className="sm:w-auto" onClick={() => handleDownloadPdf(previewInvoice)}>Download</Button>
               <Button variant="outline" icon={Copy} fullWidth className="sm:w-auto" loading={sharingInvoiceId === previewInvoice.id} onClick={() => handleShareInvoice(previewInvoice)}>Share</Button>
-              <Button variant="danger" icon={Trash2} fullWidth className="sm:w-auto" loading={deletingInvoiceId === previewInvoice.id} onClick={() => handleDeleteInvoice(previewInvoice)}>Delete</Button>
+              <Button variant="danger" icon={Trash2} fullWidth className="sm:w-auto" loading={deletingInvoiceId === previewInvoice.id} onClick={() => requestDeleteInvoice(previewInvoice)}>Delete</Button>
               {(previewInvoice.status === 'unpaid' || previewInvoice.status === 'overdue') && (
                 <button type="button" onClick={() => { handleMarkPaid(previewInvoice); setPreviewInvoice(null); }} className="col-span-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white sm:col-span-1">
                   Mark as Paid
                 </button>
               )}
             </footer>
+          </section>
+        </div>
+      ), document.body)}
+
+      {invoicePendingDelete && createPortal((
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-invoice-title"
+        >
+          <button
+            type="button"
+            aria-label="Cancel invoice delete"
+            className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
+            onClick={() => setInvoicePendingDelete(null)}
+          />
+          <section className="relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 id="delete-invoice-title" className="text-base font-bold text-slate-900">
+                  Delete {invoicePendingDelete.number}?
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  This invoice will be removed from your dashboard and reports. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setInvoicePendingDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                icon={Trash2}
+                loading={deletingInvoiceId === invoicePendingDelete.id}
+                onClick={handleDeleteInvoice}
+              >
+                Delete Invoice
+              </Button>
+            </div>
           </section>
         </div>
       ), document.body)}

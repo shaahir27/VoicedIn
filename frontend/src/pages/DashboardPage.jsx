@@ -10,6 +10,7 @@ import { formatDate, daysUntil, getRelativeTime, isOverdue } from '../utils/date
 
 export default function DashboardPage() {
   const { invoices, stats, chartData, recentInvoices: ctxRecent, alerts: ctxAlerts, loadingData, dataError } = useInvoices();
+  const revenueTrend = getRevenueTrend(chartData);
 
   const recentInvoices = ctxRecent.length > 0
     ? ctxRecent
@@ -81,9 +82,12 @@ export default function DashboardPage() {
               <h3 className="text-base font-semibold text-slate-800">Revenue Trend</h3>
               <p className="text-xs text-slate-400">Last 7 months</p>
             </div>
-            <div className="flex items-center gap-1 text-emerald-500 text-sm font-medium">
-              <TrendingUp className="w-4 h-4" />
-              +24%
+            <div className={`flex flex-col items-end text-sm font-medium ${revenueTrend >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              <span className="flex items-center gap-1">
+                <TrendingUp className={`w-4 h-4 ${revenueTrend < 0 ? 'rotate-180' : ''}`} />
+                {`${revenueTrend >= 0 ? '+' : ''}${revenueTrend}%`}
+              </span>
+              <span className="text-[11px] font-normal text-slate-400">vs previous month</span>
             </div>
           </div>
           <div className="h-52">
@@ -179,4 +183,18 @@ export default function DashboardPage() {
       </Card>
     </div>
   );
+}
+
+function getRevenueTrend(data = []) {
+  if (!Array.isArray(data) || data.length < 2) return 0;
+
+  const latest = Number(data[data.length - 1]?.revenue || 0);
+  const previous = Number(data[data.length - 2]?.revenue || 0);
+
+  if (previous === 0) {
+    if (latest === 0) return 0;
+    return latest;
+  }
+
+  return Math.round(((latest - previous) / previous) * 100);
 }

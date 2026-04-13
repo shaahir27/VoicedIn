@@ -9,6 +9,7 @@ import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
 import { formatCurrency } from '../utils/formatCurrency';
+import { downloadInvoicePdf } from '../utils/downloadInvoicePdf';
 
 const demoItems = [
   { description: 'Website Design & Development', qty: 1, rate: 45000, tax: 18 },
@@ -21,6 +22,8 @@ export default function DemoPage() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [clientName, setClientName] = useState('Acme Corp');
   const [step, setStep] = useState(1);
+  const [isDownloadingDemoPdf, setIsDownloadingDemoPdf] = useState(false);
+  const showPreview = step === 3;
 
   const subtotal = items.reduce((s, i) => s + i.qty * i.rate, 0);
   const taxTotal = items.reduce((s, i) => s + (i.qty * i.rate * i.tax) / 100, 0);
@@ -31,6 +34,22 @@ export default function DemoPage() {
   };
 
   const handleBlockedAction = () => setShowUpgrade(true);
+
+  const handleDownloadDemoPdf = async () => {
+    try {
+      setIsDownloadingDemoPdf(true);
+      await downloadInvoicePdf(
+        buildDemoInvoice(clientName, items, subtotal, taxTotal, total),
+        'INV-DEMO-0001',
+        {
+          businessProfile: buildDemoBusinessProfile(),
+          showDemoWatermark: true,
+        },
+      );
+    } finally {
+      setIsDownloadingDemoPdf(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -121,12 +140,14 @@ export default function DemoPage() {
                 <h3 className="text-sm font-semibold text-slate-700 mb-4">Step 3: Actions</h3>
                 <div className="space-y-3">
                   <Button fullWidth onClick={handleBlockedAction} icon={FileText}>Generate PDF</Button>
-                  <Button fullWidth variant="outline" onClick={handleBlockedAction} icon={Lock}>Download Invoice</Button>
+                  <Button fullWidth variant="outline" onClick={handleDownloadDemoPdf} icon={Lock} disabled={isDownloadingDemoPdf}>
+                    {isDownloadingDemoPdf ? 'Downloading…' : 'Download Invoice'}
+                  </Button>
                   <Button fullWidth variant="outline" onClick={handleBlockedAction} icon={Lock}>Save & Share</Button>
                   <Button fullWidth variant="ghost" onClick={handleTryDashboard} icon={Eye}>Explore Full Dashboard</Button>
                 </div>
                 <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-700">
-                  Demo mode: PDF downloads are watermarked. <Link to="/login" state={{ redirectTo: '/subscription' }} className="font-semibold text-primary-600 underline">Upgrade to Premium</Link> for clean exports.
+                  Demo sample downloads include a small watermark. <Link to="/login" state={{ redirectTo: '/subscription' }} className="font-semibold text-primary-600 underline">Upgrade to Premium</Link> for unlimited exports.
                 </div>
               </Card>
             )}
@@ -138,64 +159,84 @@ export default function DemoPage() {
               <p className="text-sm font-medium text-slate-600">Invoice Preview</p>
               <Badge status="demo">Demo</Badge>
             </div>
-            <div className="p-6 sm:p-8 bg-white relative">
-              {/* Watermark */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04] rotate-[-30deg]">
-                <p className="text-7xl font-extrabold text-slate-900 select-none">DEMO</p>
-              </div>
 
-              <div className="relative">
-                <div className="flex items-start justify-between mb-8">
-                  <div>
-                    <h2 className="text-xl font-extrabold tracking-tight">
-                      <span className="text-slate-800">voiced</span>
-                      <span className="text-primary-500">In</span>
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-1">Invoice</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-base font-bold text-slate-800">INV-DEMO-0001</p>
-                    <p className="text-xs text-slate-400">Date: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
-                  </div>
+            {showPreview ? (
+              <div className="p-6 sm:p-8 bg-white relative">
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04] rotate-[-30deg]">
+                  <p className="text-7xl font-extrabold text-slate-900 select-none">DEMO</p>
                 </div>
 
-                <div className="mb-6 p-3 bg-slate-50 rounded-xl">
-                  <p className="text-xs text-slate-400 mb-1">BILL TO</p>
-                  <p className="text-sm font-semibold text-slate-800">{clientName || 'Client Name'}</p>
-                </div>
+                <div className="relative space-y-5">
+                  <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <div className="min-w-0">
+                      <h2 className="text-xl font-extrabold tracking-tight">
+                        <span className="text-slate-800">voiced</span>
+                        <span className="text-primary-500">In</span>
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">Invoice</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-base font-bold text-slate-800">INV-DEMO-0001</p>
+                      <p className="text-xs text-slate-400">Date: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                    </div>
+                  </div>
 
-                <table className="w-full text-xs mb-6">
-                  <thead>
-                    <tr className="border-b-2 border-slate-200">
-                      <th className="text-left py-2 text-slate-500">Description</th>
-                      <th className="text-center py-2 text-slate-500">Qty</th>
-                      <th className="text-right py-2 text-slate-500">Rate</th>
-                      <th className="text-right py-2 text-slate-500">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, i) => (
-                      <tr key={i} className="border-b border-slate-100">
-                        <td className="py-2 text-slate-700">{item.description || 'Item'}</td>
-                        <td className="py-2 text-center text-slate-600">{item.qty}</td>
-                        <td className="py-2 text-right text-slate-600">{formatCurrency(item.rate)}</td>
-                        <td className="py-2 text-right font-medium text-slate-800">{formatCurrency(item.qty * item.rate)}</td>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="rounded-2xl bg-slate-50 p-4 min-h-28">
+                      <p className="text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase mb-2">Client</p>
+                      <p className="text-sm font-semibold text-slate-800">{clientName || 'Client Name'}</p>
+                      <p className="text-xs text-slate-500 mt-2">Name and billing details appear here once entered.</p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4 min-h-28">
+                      <p className="text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase mb-2">Item Summary</p>
+                      <p className="text-xs text-slate-500">Line items, rates, tax, and totals update as you type.</p>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b-2 border-slate-200">
+                        <th className="text-left py-2 text-slate-500">Description</th>
+                        <th className="text-center py-2 text-slate-500">Qty</th>
+                        <th className="text-right py-2 text-slate-500">Rate</th>
+                        <th className="text-right py-2 text-slate-500">Amount</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {items.map((item, i) => (
+                        <tr key={i} className="border-b border-slate-100">
+                          <td className="py-2 pr-3 text-slate-700">{item.description || 'Item'}</td>
+                          <td className="py-2 text-center text-slate-600">{item.qty}</td>
+                          <td className="py-2 text-right text-slate-600">{formatCurrency(item.rate)}</td>
+                          <td className="py-2 text-right font-medium text-slate-800">{formatCurrency(item.qty * item.rate)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
 
-                <div className="flex justify-end">
-                  <div className="w-48 space-y-1">
-                    <div className="flex justify-between text-xs"><span className="text-slate-400">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-slate-400">Tax (18%)</span><span>{formatCurrency(taxTotal)}</span></div>
-                    <div className="flex justify-between text-sm font-bold border-t border-slate-200 pt-2">
-                      <span>Total</span><span className="text-primary-600">{formatCurrency(total)}</span>
+                  <div className="grid sm:grid-cols-[1fr_220px] gap-4 items-start">
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 min-h-24">
+                      <p className="text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase mb-2">Preview Locked</p>
+                      <p className="text-xs text-slate-500">Add client details and items to reveal the full invoice sheet.</p>
+                    </div>
+                    <div className="space-y-1 rounded-2xl border border-slate-100 bg-white p-4">
+                      <div className="flex justify-between text-xs"><span className="text-slate-400">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+                      <div className="flex justify-between text-xs"><span className="text-slate-400">Tax (18%)</span><span>{formatCurrency(taxTotal)}</span></div>
+                      <div className="flex justify-between text-sm font-bold border-t border-slate-200 pt-2">
+                        <span>Total</span><span className="text-primary-600">{formatCurrency(total)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-6 sm:p-8 bg-white">
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                  <p className="text-sm font-semibold text-slate-800">Your invoice preview will appear here</p>
+                  <p className="mt-2 text-xs text-slate-500">Complete the client and item steps to unlock the preview.</p>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       </div>
@@ -220,4 +261,47 @@ export default function DemoPage() {
       <Footer />
     </div>
   );
+}
+
+function buildDemoInvoice(clientName, items, subtotal, taxTotal, total) {
+  return {
+    id: 'demo-invoice',
+    number: 'INV-DEMO-0001',
+    date: new Date().toLocaleDateString('en-GB'),
+    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB'),
+    status: 'draft',
+    currency: 'INR',
+    clientName: clientName || 'Acme Corp',
+    clientCompanyName: clientName || 'Acme Corp',
+    clientGstNumber: '22AAAAA0000A1Z5',
+    clientAddress: 'Demo client address',
+    notes: 'Sample invoice exported from the demo flow.',
+    terms: 'Payment due within 7 days.',
+    items: items.map(item => ({
+      description: item.description || 'Item',
+      qty: item.qty,
+      rate: item.rate,
+      tax: item.tax ?? 18,
+    })),
+    subtotal,
+    taxTotal,
+    total,
+    isDemo: true,
+    includeBankDetails: false,
+  };
+}
+
+function buildDemoBusinessProfile() {
+  return {
+    businessName: 'voicedIn',
+    name: 'voicedIn',
+    address: 'Demo business address',
+    email: 'hello@voicedin.lat',
+    phone: '7904515049',
+    gst: '',
+    panNumber: '',
+    currency: 'INR',
+    includeBankDetails: false,
+    isDemo: true,
+  };
 }

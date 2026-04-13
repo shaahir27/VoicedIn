@@ -10,6 +10,7 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Badge from '../components/ui/Badge';
 import { useInvoices } from '../context/InvoiceContext';
+import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatCurrency';
 import { generateInvoiceNumber } from '../utils/generateInvoiceNumber';
@@ -21,12 +22,14 @@ import { copyTextToClipboard } from '../utils/clipboard';
 
 const emptyItem = { description: '', qty: 1, rate: 0, tax: '' };
 const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function CreateInvoicePage() {
   const navigate = useNavigate();
   const { invoiceId } = useParams();
   const isEditMode = Boolean(invoiceId);
   const { clients, invoices, addInvoice, updateInvoice } = useInvoices();
+  const { isDemo } = useAuth();
   const { showToast } = useApp();
 
   const [showPreview, setShowPreview] = useState(false);
@@ -36,6 +39,8 @@ export default function CreateInvoicePage() {
   const [clientCompanyName, setClientCompanyName] = useState('');
   const [clientGstNumber, setClientGstNumber] = useState('');
   const [clientAddress, setClientAddress] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState(generateInvoiceNumber);
   const [invoiceDate, setInvoiceDate] = useState(formatDateISO(new Date()));
   const [dueDate, setDueDate] = useState(() => formatDateISO(new Date(Date.now() + 15 * 86400000)));
@@ -56,7 +61,7 @@ export default function CreateInvoicePage() {
         const settings = data.settings;
         setIncludeBankDetails(Boolean(settings.includeBankDetails));
         if (settings.defaultTerms) setNotes(settings.defaultTerms);
-        if (settings.defaultTemplate) setTemplate(settings.defaultTemplate);
+        if (!isEditMode && settings.defaultTemplate) setTemplate(settings.defaultTemplate);
       })
       .catch(err => {
         console.error('Failed to load invoice defaults', err);
@@ -74,7 +79,7 @@ export default function CreateInvoicePage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isEditMode]);
 
   useEffect(() => {
     if (!invoiceId || hydratedInvoiceId === invoiceId) return undefined;
@@ -88,6 +93,8 @@ export default function CreateInvoicePage() {
       setClientCompanyName(invoice.clientCompanyName || invoice.company || matchedClient?.companyName || matchedClient?.company || '');
       setClientGstNumber(invoice.clientGstNumber || matchedClient?.gstNumber || matchedClient?.gst || '');
       setClientAddress(invoice.clientAddress || matchedClient?.address || '');
+      setClientEmail(matchedClient?.email || '');
+      setClientPhone(matchedClient?.phone || '');
       setInvoiceNumber(invoice.number || generateInvoiceNumber());
       setInvoiceDate(invoice.date || formatDateISO(new Date()));
       setDueDate(invoice.dueDate || '');
@@ -129,14 +136,58 @@ export default function CreateInvoicePage() {
     (c.companyName || c.company || '').toLowerCase().includes(clientSearch.toLowerCase())
   );
 
-  const selectClient = (client) => {
+  const applyClientDetails = (client, { overwrite = true } = {}) => {
+    if (!client) return;
     setSelectedClient(client);
     setClientSearch(client.name);
-    setClientCompanyName(client.companyName || client.company || '');
-    setClientGstNumber(client.gstNumber || client.gst || '');
-    setClientAddress(client.address || '');
+    if (overwrite || !clientCompanyName) setClientCompanyName(client.companyName || client.company || '');
+    if (overwrite || !clientGstNumber) setClientGstNumber(client.gstNumber || client.gst || '');
+    if (overwrite || !clientAddress) setClientAddress(client.address || '');
+    if (overwrite || !clientEmail) setClientEmail(client.email || '');
+    if (overwrite || !clientPhone) setClientPhone(client.phone || '');
+  };
+
+  const selectClient = (client) => {
+    applyClientDetails(client);
+    const previousInvoice = invoices.find(invoice =>
+      invoice.clientId === client.id ||
+      invoice.clientName?.toLowerCase() === client.name?.toLowerCase()
+    );
+    if (previousInvoice) {
+      if (!(client.companyName || client.company)) setClientCompanyName(previousInvoice.clientCompanyName || previousInvoice.company || '');
+      if (!(client.gstNumber || client.gst)) setClientGstNumber(previousInvoice.clientGstNumber || previousInvoice.clientDetails?.gstNumber || '');
+      if (!client.address) setClientAddress(previousInvoice.clientAddress || previousInvoice.clientDetails?.address || '');
+      if (!isEditMode && previousInvoice.template) setTemplate(previousInvoice.template);
+    }
     setShowClientSuggestions(false);
   };
+
+  useEffect(() => {
+    if (selectedClient || !clientSearch.trim()) return;
+
+    const normalizedSearch = clientSearch.trim().toLowerCase();
+    const exactClient = clients.find(client =>
+      client.name?.toLowerCase() === normalizedSearch
+    );
+
+    if (exactClient) {
+      applyClientDetails(exactClient, { overwrite: false });
+      setShowClientSuggestions(false);
+      return;
+    }
+
+    const previousInvoice = invoices.find(invoice =>
+      invoice.clientName?.toLowerCase() === normalizedSearch
+    );
+
+    if (previousInvoice) {
+      if (!clientCompanyName) setClientCompanyName(previousInvoice.clientCompanyName || previousInvoice.company || '');
+      if (!clientGstNumber) setClientGstNumber(previousInvoice.clientGstNumber || previousInvoice.clientDetails?.gstNumber || '');
+      if (!clientAddress) setClientAddress(previousInvoice.clientAddress || previousInvoice.clientDetails?.address || '');
+      if (!isEditMode && previousInvoice.template) setTemplate(previousInvoice.template);
+      setShowClientSuggestions(false);
+    }
+  }, [clientSearch, clients, invoices, selectedClient, clientCompanyName, clientGstNumber, clientAddress, clientEmail, clientPhone, isEditMode]);
 
   const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (index) => setItems(items.filter((_, i) => i !== index));
@@ -149,6 +200,10 @@ export default function CreateInvoicePage() {
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.rate || 0), 0), [items]);
   const taxTotal = useMemo(() => items.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0) * Number(item.tax || 0)) / 100, 0), [items]);
   const total = subtotal + taxTotal;
+  const selectedTemplate = useMemo(
+    () => templates.find(t => t.id === template) || templates[0],
+    [template],
+  );
 
   const reuseLastInvoice = () => {
     if (!selectedClient) return;
@@ -167,6 +222,8 @@ export default function CreateInvoicePage() {
     const resolvedCompany = clientCompanyName || selectedClient?.companyName || selectedClient?.company;
     const resolvedGstNumber = clientGstNumber || selectedClient?.gstNumber || selectedClient?.gst;
     const resolvedAddress = clientAddress || selectedClient?.address;
+    const resolvedEmail = clientEmail || selectedClient?.email;
+    const resolvedPhone = clientPhone || selectedClient?.phone;
 
     return {
       clientId: selectedClient?.id || '',
@@ -174,6 +231,8 @@ export default function CreateInvoicePage() {
       company: (resolvedCompany || '').trim(),
       gstNumber: (resolvedGstNumber || '').trim().toUpperCase(),
       address: (resolvedAddress || '').trim(),
+      email: (resolvedEmail || '').trim(),
+      phone: (resolvedPhone || '').trim(),
     };
   };
 
@@ -185,6 +244,12 @@ export default function CreateInvoicePage() {
     if (!details.gstNumber) throw new Error('Client GST number is required');
     if (!gstPattern.test(details.gstNumber)) throw new Error('Enter a valid GST number');
     if (!details.address) throw new Error('Client address is required');
+    if (!details.clientId) {
+      if (!details.email) throw new Error('Client email is required for new clients');
+      if (!emailPattern.test(details.email)) throw new Error('Enter a valid client email');
+      if (!details.phone) throw new Error('Client mobile number is required for new clients');
+      if (details.phone.replace(/[\s\-()]/g, '').length < 10) throw new Error('Enter a valid client mobile number');
+    }
     if (!invoiceDate) throw new Error('Invoice date is required');
     if (!dueDate) throw new Error('Due date is required');
 
@@ -207,6 +272,8 @@ export default function CreateInvoicePage() {
       clientCompanyName: details.company,
       clientGstNumber: details.gstNumber,
       clientAddress: details.address,
+      clientEmail: details.email,
+      clientPhone: details.phone,
       includeBankDetails,
       status,
       isDraft: status === 'draft',
@@ -245,9 +312,14 @@ export default function CreateInvoicePage() {
   };
 
   const handleDownloadPdf = async () => {
+    if (isDemo && invoices.length > 3) {
+      showToast('Demo is limited to 3 invoices. Upgrade to download more PDFs.', 'error');
+      return;
+    }
+
     try {
       const invoice = await saveInvoice('unpaid');
-      await downloadInvoicePdf(invoice.id, invoice.number);
+      await downloadInvoicePdf(invoice.id, invoice.number, { showDemoWatermark: isDemo });
       showToast('PDF downloaded!');
       navigate('/invoices');
     } catch (err) {
@@ -310,6 +382,8 @@ export default function CreateInvoicePage() {
                   setClientCompanyName('');
                   setClientGstNumber('');
                   setClientAddress('');
+                  setClientEmail('');
+                  setClientPhone('');
                 }}
                   onFocus={() => setShowClientSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
@@ -350,9 +424,11 @@ export default function CreateInvoicePage() {
             <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-3">
               <div>
                 <h4 className="text-sm font-semibold text-amber-900">Invoice Client Details</h4>
-                <p className="text-xs text-amber-700">Company, GST, and address are required before generating the invoice.</p>
+                <p className="text-xs text-amber-700">Company, GST, address, email, and mobile are used to create a new client when this name is not saved yet.</p>
               </div>
               <Input label="Company Name" value={clientCompanyName} onChange={e => setClientCompanyName(e.target.value)} placeholder="Company name" required />
+              <Input label="Email" type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="client@example.com" required={!selectedClient} />
+              <Input label="Mobile" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="10-digit mobile number" required={!selectedClient} />
               <Input label="GST Number" value={clientGstNumber} onChange={e => setClientGstNumber(e.target.value.toUpperCase())} placeholder="22AAAAA0000A1Z5" required />
               <Input label="Address" value={clientAddress} onChange={e => setClientAddress(e.target.value)} placeholder="Full address" required />
             </div>
@@ -483,13 +559,13 @@ export default function CreateInvoicePage() {
           <div className="block">
             <div className="lg:sticky lg:top-24">
               <Card className="!p-0 overflow-hidden">
-                <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div className="px-4 py-3 border-b flex items-center justify-between" style={{ backgroundColor: selectedTemplate.colors.accent, borderColor: `${selectedTemplate.colors.primary}22` }}>
                   <p className="text-sm font-medium text-slate-600">Live Preview</p>
-                  <Badge status="draft">Draft</Badge>
+                  <Badge status="draft">{selectedTemplate.name}</Badge>
                 </div>
                 <div className="p-8 bg-white min-h-[600px]">
                   {/* Invoice preview */}
-                  <div className="flex items-start justify-between mb-8">
+                  <div className="flex items-start justify-between mb-8 border-b pb-5" style={{ borderColor: selectedTemplate.colors.primary }}>
                     <div>
                       {businessProfile?.logoUrl ? (
                         <img
@@ -498,25 +574,26 @@ export default function CreateInvoicePage() {
                           className="mb-2 max-h-14 max-w-40 object-contain"
                         />
                       ) : businessProfile?.businessName ? (
-                        <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">{businessProfile.businessName}</h2>
+                        <h2 className="text-2xl font-extrabold tracking-tight" style={{ color: selectedTemplate.colors.primary }}>{businessProfile.businessName}</h2>
                       ) : (
-                        <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">Invoice</h2>
+                        <h2 className="text-2xl font-extrabold tracking-tight" style={{ color: selectedTemplate.colors.primary }}>Invoice</h2>
                       )}
                       <p className="text-xs text-slate-400 mt-1">Invoice</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-slate-800">{invoiceNumber}</p>
+                      <p className="text-lg font-bold" style={{ color: selectedTemplate.colors.primary }}>{invoiceNumber}</p>
                       <p className="text-xs text-slate-400">Date: {formatDate(invoiceDate)}</p>
                       <p className="text-xs text-slate-400">Due: {formatDate(dueDate)}</p>
                     </div>
                   </div>
 
                   {/* Bill To */}
-                  <div className="mb-8 p-4 bg-slate-50 rounded-xl">
+                  <div className="mb-8 p-4 rounded-xl border-l-4" style={{ backgroundColor: selectedTemplate.colors.accent, borderColor: selectedTemplate.colors.primary }}>
                     <p className="text-xs font-medium text-slate-400 mb-1">BILL TO</p>
                     <p className="text-sm font-semibold text-slate-800">{selectedClient?.name || clientSearch || 'Client Name'}</p>
                     <p className="text-xs text-slate-500">{clientCompanyName || selectedClient?.companyName || selectedClient?.company || ''}</p>
-                    <p className="text-xs text-slate-400">{selectedClient?.email || ''}</p>
+                    <p className="text-xs text-slate-400">{clientEmail || selectedClient?.email || ''}</p>
+                    <p className="text-xs text-slate-400">{clientPhone || selectedClient?.phone || ''}</p>
                     {clientGstNumber || selectedClient?.gstNumber || selectedClient?.gst ? <p className="text-xs text-slate-400">GST: {clientGstNumber || selectedClient?.gstNumber || selectedClient?.gst}</p> : null}
                     {clientAddress || selectedClient?.address ? <p className="text-xs text-slate-400">{clientAddress || selectedClient?.address}</p> : null}
                   </div>
@@ -524,7 +601,7 @@ export default function CreateInvoicePage() {
                   {/* Items table */}
                   <table className="w-full mb-6 text-xs">
                     <thead>
-                      <tr className="border-b-2 border-slate-200">
+                      <tr className="border-b-2" style={{ borderColor: selectedTemplate.colors.primary }}>
                         <th className="text-left py-2 text-slate-500 font-medium">Item</th>
                         <th className="text-center py-2 text-slate-500 font-medium">Qty</th>
                         <th className="text-right py-2 text-slate-500 font-medium">Rate</th>
@@ -558,7 +635,7 @@ export default function CreateInvoicePage() {
                       </div>
                       <div className="flex justify-between text-sm font-bold border-t border-slate-200 pt-2">
                         <span className="text-slate-800">Total</span>
-                        <span className="text-primary-600">{formatCurrency(total)}</span>
+                        <span style={{ color: selectedTemplate.colors.primary }}>{formatCurrency(total)}</span>
                       </div>
                     </div>
                   </div>
