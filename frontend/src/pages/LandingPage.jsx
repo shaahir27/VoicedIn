@@ -298,7 +298,7 @@ export default function LandingPage() {
           <p className="text-primary-100 text-lg mb-8">Join thousands of freelancers who invoice smarter with voicedIn.</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link to="/demo">
-              <Button size="xl" variant="outline" className="!border-white/30 !text-white hover:!bg-white/10">Try Demo</Button>
+              <Button size="xl" variant="primary" className="!bg-white !text-primary-700 hover:!bg-slate-50 !shadow-none">Try Demo</Button>
             </Link>
             <Link to="/signup">
               <Button size="xl" className="!bg-white !text-primary-600 hover:!bg-primary-50">Get Started — ₹49/mo</Button>

@@ -124,6 +124,7 @@ function getStaticPaymentInstructions() {
         amount: config.premiumPayment.amount,
         currency: 'INR',
         upiId: config.premiumPayment.upiId,
+        phone: config.premiumPayment.phone,
         payeeName: config.premiumPayment.payeeName,
         qrUrl: config.premiumPayment.qrUrl,
         note: config.premiumPayment.note,

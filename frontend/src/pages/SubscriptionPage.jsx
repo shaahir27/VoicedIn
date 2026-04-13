@@ -8,6 +8,11 @@ import { useApp } from '../context/AppContext';
 import { api, assetUrl } from '../utils/api';
 import { formatDate } from '../utils/dateHelpers';
 
+const paymentContact = {
+  phone: '7904515049',
+  upiId: 'shaahir2007@okhdfcbank',
+};
+
 function qrSrc(url) {
   if (!url) return '/my-payment-qr.jpeg';
   if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url;
@@ -82,6 +87,8 @@ export default function SubscriptionPage() {
   const payment = subscription?.payment || {};
   const price = Number(subscription?.price || payment.amount || 49);
   const pendingRequest = subscription?.paymentRequest?.status === 'pending' ? subscription.paymentRequest : null;
+  const paymentPhone = payment.phone || paymentContact.phone;
+  const paymentUpiId = payment.upiId || paymentContact.upiId;
 
   const features = [
     { feature: 'Create invoices', free: 'Up to 3', premium: 'Unlimited' },
@@ -140,9 +147,22 @@ export default function SubscriptionPage() {
         </Card>
       ) : (
         <Card className="mb-6">
-          <div className="grid md:grid-cols-[240px_1fr] gap-6 items-center">
+          <div className="grid md:grid-cols-[260px_1fr] gap-6 items-center">
             <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
               <img src={qrSrc(payment.qrUrl)} alt="Premium payment QR" className="w-full aspect-square object-contain rounded-2xl bg-slate-50" />
+              <div className="mt-4 rounded-2xl border border-primary-100 bg-primary-50/70 p-4 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary-600">Payment contact</p>
+                <div className="mt-3 space-y-2 text-slate-700">
+                  <p className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-slate-500">Phone</span>
+                    <span className="font-semibold text-slate-900 break-all">{paymentPhone}</span>
+                  </p>
+                  <p className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-slate-500">UPI ID</span>
+                    <span className="font-semibold text-slate-900 break-all">{paymentUpiId}</span>
+                  </p>
+                </div>
+              </div>
             </div>
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 mb-3">
@@ -154,7 +174,8 @@ export default function SubscriptionPage() {
 
               <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-4 text-sm text-slate-600 space-y-2">
                 <p><span className="font-semibold text-slate-800">Payee:</span> {payment.payeeName || 'VoicedIn'}</p>
-                {payment.upiId && <p><span className="font-semibold text-slate-800">UPI:</span> {payment.upiId}</p>}
+                <p><span className="font-semibold text-slate-800">UPI:</span> {paymentUpiId}</p>
+                <p><span className="font-semibold text-slate-800">Phone:</span> {paymentPhone}</p>
                 <p><span className="font-semibold text-slate-800">Amount:</span> Rs. {payment.amount || 49}</p>
                 <p className="text-xs text-slate-500">{payment.note || 'Premium is activated after payment confirmation.'}</p>
               </div>

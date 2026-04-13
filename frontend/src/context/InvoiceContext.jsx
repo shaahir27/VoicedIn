@@ -102,6 +102,7 @@ export function InvoiceProvider({ children }) {
     const data = await api.put(`/invoices/${id}`, updates);
     setInvoices(prev => prev.map(inv => inv.id === id ? data.invoice : inv));
     fetchData();
+    return data.invoice;
   }, [fetchData]);
 
   const deleteInvoice = useCallback(async (id) => {

@@ -11,6 +11,8 @@ import { useInvoices } from '../context/InvoiceContext';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatCurrency';
 
+const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
+
 export default function ClientsPage() {
   const { clients, addClient } = useInvoices();
   const { showToast } = useApp();
@@ -26,12 +28,26 @@ export default function ClientsPage() {
 
   const handleAddClient = async () => {
     try {
-      await addClient(newClient);
+      const clientToCreate = {
+        ...newClient,
+        name: newClient.name.trim(),
+        companyName: newClient.companyName.trim(),
+        gstNumber: newClient.gstNumber.trim().toUpperCase(),
+        address: newClient.address.trim(),
+      };
+
+      if (!clientToCreate.name) throw new Error('Client name is required');
+      if (!clientToCreate.companyName) throw new Error('Company name is required');
+      if (!clientToCreate.gstNumber) throw new Error('GST number is required');
+      if (!gstPattern.test(clientToCreate.gstNumber)) throw new Error('Enter a valid GST number');
+      if (!clientToCreate.address) throw new Error('Address is required');
+
+      await addClient(clientToCreate);
       setShowAddModal(false);
       setNewClient({ name: '', email: '', phone: '', companyName: '', gstNumber: '', address: '' });
       showToast('Client added successfully!');
     } catch (err) {
-      showToast('Failed to add client', 'error');
+      showToast(err.message || 'Failed to add client', 'error');
     }
   };
 
@@ -99,16 +115,16 @@ export default function ClientsPage() {
       <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add New Client" size="md">
         <div className="space-y-4">
           <Input label="Full Name" value={newClient.name} onChange={e => setNewClient({ ...newClient, name: e.target.value })} placeholder="Client name" required />
-          <Input label="Company Name" value={newClient.companyName} onChange={e => setNewClient({ ...newClient, companyName: e.target.value })} placeholder="Company name" />
-          <div className="grid grid-cols-2 gap-4">
+          <Input label="Company Name" value={newClient.companyName} onChange={e => setNewClient({ ...newClient, companyName: e.target.value })} placeholder="Company name" required />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Email" type="email" value={newClient.email} onChange={e => setNewClient({ ...newClient, email: e.target.value })} placeholder="email@example.com" />
             <Input label="Phone" value={newClient.phone} onChange={e => setNewClient({ ...newClient, phone: e.target.value })} placeholder="+91 98765 43210" />
           </div>
-          <Input label="GST Number" value={newClient.gstNumber} onChange={e => setNewClient({ ...newClient, gstNumber: e.target.value })} placeholder="22AAAAA0000A1Z5" />
-          <Input label="Address" value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} placeholder="Full address" />
+          <Input label="GST Number" value={newClient.gstNumber} onChange={e => setNewClient({ ...newClient, gstNumber: e.target.value.toUpperCase() })} placeholder="22AAAAA0000A1Z5" required />
+          <Input label="Address" value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} placeholder="Full address" required />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancel</Button>
-            <Button onClick={handleAddClient} disabled={!newClient.name}>Add Client</Button>
+            <Button onClick={handleAddClient} disabled={!newClient.name || !newClient.companyName || !newClient.gstNumber || !newClient.address}>Add Client</Button>
           </div>
         </div>
       </Modal>

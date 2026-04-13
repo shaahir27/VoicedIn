@@ -49,6 +49,9 @@ export function validateInvoiceItems(items) {
         if (!item.description) throw new ValidationError('Each item must have a description');
         if (!item.qty || item.qty <= 0) throw new ValidationError('Quantity must be positive');
         if (item.rate === undefined || item.rate < 0) throw new ValidationError('Rate must be non-negative');
+        if (item.tax === undefined || item.tax === null || item.tax === '' || item.tax < 0) {
+            throw new ValidationError('Each item must have a GST rate');
+        }
     }
     return items;
 }

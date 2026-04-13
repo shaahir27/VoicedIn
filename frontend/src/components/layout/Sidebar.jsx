@@ -1,6 +1,6 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, FileText, Users, CreditCard, Palette, Download, Settings, Crown, X, ChevronLeft
+  LayoutDashboard, FileText, Users, CreditCard, Palette, Download, Settings, Crown, X
 } from 'lucide-react';
 import Logo from '../brand/Logo';
 import { useApp } from '../../context/AppContext';
@@ -21,7 +21,7 @@ const bottomItems = [
   { label: 'Settings', to: '/settings', icon: Settings },
 ];
 
-export default function Sidebar({ logoUrl = '' }) {
+export default function Sidebar() {
   const { sidebarOpen, closeSidebar } = useApp();
   const { user, isDemo } = useAuth();
 
@@ -40,7 +40,9 @@ export default function Sidebar({ logoUrl = '' }) {
       `}>
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-50">
-          <Logo size="md" imageSrc={logoUrl} />
+          <Link to="/dashboard" onClick={closeSidebar} aria-label="Go to dashboard" className="inline-flex">
+            <Logo size="md" />
+          </Link>
           <button onClick={closeSidebar} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
             <X className="w-5 h-5 text-slate-400" />
           </button>

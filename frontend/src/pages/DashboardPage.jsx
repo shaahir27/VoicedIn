@@ -56,7 +56,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat, i) => (
           <Card key={i} className={`animate-fade-in-up`} style={{ animationDelay: `${i * 0.08}s` }}>
             <div className="flex items-start justify-between">

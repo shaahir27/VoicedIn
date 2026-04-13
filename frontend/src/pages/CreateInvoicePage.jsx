@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Plus, Trash2, Eye, EyeOff, Save, Download, Share2, Copy, ArrowLeft, FileText, Sparkles, User
+  Plus, Trash2, Eye, EyeOff, Save, Download, Share2, Copy, ArrowLeft, FileText, User
 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -16,14 +16,17 @@ import { generateInvoiceNumber } from '../utils/generateInvoiceNumber';
 import { formatDate, formatDateISO } from '../utils/dateHelpers';
 import { templates } from '../data/templates';
 import { downloadInvoicePdf } from '../utils/downloadInvoicePdf';
-import { api } from '../utils/api';
+import { api, assetUrl } from '../utils/api';
 import { copyTextToClipboard } from '../utils/clipboard';
 
-const emptyItem = { description: '', qty: 1, rate: 0, tax: 18 };
+const emptyItem = { description: '', qty: 1, rate: 0, tax: '' };
+const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
 
 export default function CreateInvoicePage() {
   const navigate = useNavigate();
-  const { clients, invoices, addInvoice } = useInvoices();
+  const { invoiceId } = useParams();
+  const isEditMode = Boolean(invoiceId);
+  const { clients, invoices, addInvoice, updateInvoice } = useInvoices();
   const { showToast } = useApp();
 
   const [showPreview, setShowPreview] = useState(false);
@@ -33,13 +36,15 @@ export default function CreateInvoicePage() {
   const [clientCompanyName, setClientCompanyName] = useState('');
   const [clientGstNumber, setClientGstNumber] = useState('');
   const [clientAddress, setClientAddress] = useState('');
-  const [invoiceNumber] = useState(generateInvoiceNumber);
+  const [invoiceNumber, setInvoiceNumber] = useState(generateInvoiceNumber);
   const [invoiceDate, setInvoiceDate] = useState(formatDateISO(new Date()));
   const [dueDate, setDueDate] = useState(() => formatDateISO(new Date(Date.now() + 15 * 86400000)));
   const [items, setItems] = useState([{ ...emptyItem }]);
   const [notes, setNotes] = useState('Thank you for your business!');
   const [template, setTemplate] = useState('modern');
   const [includeBankDetails, setIncludeBankDetails] = useState(false);
+  const [businessProfile, setBusinessProfile] = useState(null);
+  const [hydratedInvoiceId, setHydratedInvoiceId] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -52,22 +57,72 @@ export default function CreateInvoicePage() {
         setIncludeBankDetails(Boolean(settings.includeBankDetails));
         if (settings.defaultTerms) setNotes(settings.defaultTerms);
         if (settings.defaultTemplate) setTemplate(settings.defaultTemplate);
-        if (typeof settings.taxRate === 'number') {
-          setItems(prev => prev.map(item => (
-            item.description || Number(item.rate) > 0
-              ? item
-              : { ...item, tax: settings.taxRate }
-          )));
-        }
       })
       .catch(err => {
         console.error('Failed to load invoice defaults', err);
+      });
+
+    api.get('/business-profile')
+      .then(data => {
+        if (!isMounted) return;
+        setBusinessProfile(data.profile || null);
+      })
+      .catch(err => {
+        console.error('Failed to load business profile', err);
       });
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!invoiceId || hydratedInvoiceId === invoiceId) return undefined;
+
+    let isMounted = true;
+    const hydrateInvoice = (invoice) => {
+      if (!invoice || !isMounted) return;
+      const matchedClient = clients.find(client => client.id === invoice.clientId) || null;
+      setSelectedClient(matchedClient);
+      setClientSearch(invoice.clientName || matchedClient?.name || '');
+      setClientCompanyName(invoice.clientCompanyName || invoice.company || matchedClient?.companyName || matchedClient?.company || '');
+      setClientGstNumber(invoice.clientGstNumber || matchedClient?.gstNumber || matchedClient?.gst || '');
+      setClientAddress(invoice.clientAddress || matchedClient?.address || '');
+      setInvoiceNumber(invoice.number || generateInvoiceNumber());
+      setInvoiceDate(invoice.date || formatDateISO(new Date()));
+      setDueDate(invoice.dueDate || '');
+      setItems(invoice.items?.length ? invoice.items.map(item => ({
+        description: item.description || '',
+        qty: Number(item.qty || 1),
+        rate: Number(item.rate || 0),
+        tax: item.tax === undefined || item.tax === null ? '' : Number(item.tax),
+      })) : [{ ...emptyItem }]);
+      setNotes(invoice.notes || invoice.terms || '');
+      setTemplate(invoice.template || 'modern');
+      setIncludeBankDetails(Boolean(invoice.includeBankDetails));
+      setHydratedInvoiceId(invoiceId);
+    };
+
+    const existingInvoice = invoices.find(invoice => invoice.id === invoiceId);
+    if (existingInvoice) {
+      hydrateInvoice(existingInvoice);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    api.get(`/invoices/${invoiceId}`)
+      .then(data => hydrateInvoice(data.invoice))
+      .catch(err => {
+        if (!isMounted) return;
+        showToast(err.message || 'Failed to load invoice for editing', 'error');
+        navigate('/invoices');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [clients, hydratedInvoiceId, invoiceId, invoices, navigate, showToast]);
 
   const filteredClients = clients.filter(c =>
     c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
@@ -87,12 +142,12 @@ export default function CreateInvoicePage() {
   const removeItem = (index) => setItems(items.filter((_, i) => i !== index));
   const updateItem = (index, field, value) => {
     const updated = [...items];
-    updated[index] = { ...updated[index], [field]: field === 'description' ? value : Number(value) || 0 };
+    updated[index] = { ...updated[index], [field]: field === 'description' || value === '' ? value : Number(value) };
     setItems(updated);
   };
 
-  const subtotal = useMemo(() => items.reduce((sum, item) => sum + item.qty * item.rate, 0), [items]);
-  const taxTotal = useMemo(() => items.reduce((sum, item) => sum + (item.qty * item.rate * item.tax) / 100, 0), [items]);
+  const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.rate || 0), 0), [items]);
+  const taxTotal = useMemo(() => items.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0) * Number(item.tax || 0)) / 100, 0), [items]);
   const total = subtotal + taxTotal;
 
   const reuseLastInvoice = () => {
@@ -108,26 +163,63 @@ export default function CreateInvoicePage() {
     }
   };
 
+  const resolveClientDetails = () => {
+    const resolvedCompany = clientCompanyName || selectedClient?.companyName || selectedClient?.company;
+    const resolvedGstNumber = clientGstNumber || selectedClient?.gstNumber || selectedClient?.gst;
+    const resolvedAddress = clientAddress || selectedClient?.address;
+
+    return {
+      clientId: selectedClient?.id || '',
+      clientName: (selectedClient?.name || clientSearch || '').trim(),
+      company: (resolvedCompany || '').trim(),
+      gstNumber: (resolvedGstNumber || '').trim().toUpperCase(),
+      address: (resolvedAddress || '').trim(),
+    };
+  };
+
+  const validateInvoice = (status, details) => {
+    if (status === 'draft') return;
+
+    if (!details.clientName) throw new Error('Client name is required');
+    if (!details.company) throw new Error('Client company name is required');
+    if (!details.gstNumber) throw new Error('Client GST number is required');
+    if (!gstPattern.test(details.gstNumber)) throw new Error('Enter a valid GST number');
+    if (!details.address) throw new Error('Client address is required');
+    if (!invoiceDate) throw new Error('Invoice date is required');
+    if (!dueDate) throw new Error('Due date is required');
+
+    items.forEach((item, index) => {
+      if (!item.description?.trim()) throw new Error(`Item ${index + 1} needs a description`);
+      if (!item.qty || Number(item.qty) <= 0) throw new Error(`Item ${index + 1} needs a valid quantity`);
+      if (item.rate === undefined || Number(item.rate) < 0) throw new Error(`Item ${index + 1} needs a valid rate`);
+      if (item.tax === '' || item.tax === undefined || Number(item.tax) < 0) throw new Error(`Item ${index + 1} needs a GST rate`);
+    });
+  };
+
   const saveInvoice = async (status = 'draft') => {
-    const resolvedCompany = selectedClient?.companyName || selectedClient?.company || clientCompanyName;
-    const resolvedGstNumber = selectedClient?.gstNumber || selectedClient?.gst || clientGstNumber;
-    const resolvedAddress = selectedClient?.address || clientAddress;
+    const details = resolveClientDetails();
+    validateInvoice(status, details);
 
     const invoice = {
-      clientId: selectedClient?.id || '',
-      clientName: selectedClient?.name || clientSearch,
-      company: resolvedCompany,
-      clientCompanyName: resolvedCompany,
-      clientGstNumber: resolvedGstNumber,
-      clientAddress: resolvedAddress,
+      clientId: details.clientId,
+      clientName: details.clientName,
+      company: details.company,
+      clientCompanyName: details.company,
+      clientGstNumber: details.gstNumber,
+      clientAddress: details.address,
       includeBankDetails,
       status,
+      isDraft: status === 'draft',
       date: invoiceDate,
       dueDate,
-      items,
+      items: items.map(item => ({ ...item, tax: item.tax === '' ? 0 : Number(item.tax) })),
       notes,
       template,
     };
+
+    if (isEditMode) {
+      return await updateInvoice(invoiceId, invoice);
+    }
 
     return await addInvoice(invoice);
   };
@@ -135,7 +227,7 @@ export default function CreateInvoicePage() {
   const handleSaveDraft = async () => {
     try {
       await saveInvoice('draft');
-      showToast('Invoice saved as draft');
+      showToast(isEditMode ? 'Draft updated' : 'Invoice saved as draft');
       navigate('/invoices');
     } catch (err) {
       showToast(err.message || 'Failed to create invoice', 'error');
@@ -145,7 +237,7 @@ export default function CreateInvoicePage() {
   const handleGenerateInvoice = async () => {
     try {
       await saveInvoice('unpaid');
-      showToast('Invoice created successfully!');
+      showToast(isEditMode ? 'Invoice updated successfully!' : 'Invoice created successfully!');
       navigate('/invoices');
     } catch (err) {
       showToast(err.message || 'Failed to create invoice', 'error');
@@ -186,7 +278,7 @@ export default function CreateInvoicePage() {
             <ArrowLeft className="w-5 h-5 text-slate-500" />
           </button>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Create Invoice</h1>
+            <h1 className="text-xl font-bold text-slate-900">{isEditMode ? 'Edit Invoice' : 'Create Invoice'}</h1>
             <p className="text-sm text-slate-500">{invoiceNumber}</p>
           </div>
         </div>
@@ -195,7 +287,7 @@ export default function CreateInvoicePage() {
             {showPreview ? 'Hide' : 'Preview'}
           </Button>
           <Button variant="outline" size="sm" onClick={handleSaveDraft} icon={Save} data-shortcut-save="invoice">Save Draft</Button>
-          <Button size="sm" onClick={handleGenerateInvoice} icon={FileText}>Generate</Button>
+          <Button size="sm" onClick={handleGenerateInvoice} icon={FileText}>{isEditMode ? 'Update' : 'Generate'}</Button>
         </div>
       </div>
 
@@ -221,6 +313,7 @@ export default function CreateInvoicePage() {
                 }}
                   onFocus={() => setShowClientSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
+                  required
                 />
               {showClientSuggestions && filteredClients.length > 0 && (
                 <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white rounded-xl border border-slate-200 shadow-lg max-h-48 overflow-y-auto">
@@ -254,17 +347,15 @@ export default function CreateInvoicePage() {
               </div>
             )}
 
-            {!selectedClient && (
-              <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-3">
-                <div>
-                  <h4 className="text-sm font-semibold text-amber-900">New Client Details</h4>
-                  <p className="text-xs text-amber-700">Fill these only if the client is not already saved.</p>
-                </div>
-                <Input label="Company Name" value={clientCompanyName} onChange={e => setClientCompanyName(e.target.value)} placeholder="Company name" />
-                <Input label="GST Number" value={clientGstNumber} onChange={e => setClientGstNumber(e.target.value)} placeholder="22AAAAA0000A1Z5" />
-                <Input label="Address" value={clientAddress} onChange={e => setClientAddress(e.target.value)} placeholder="Full address" />
+            <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-amber-900">Invoice Client Details</h4>
+                <p className="text-xs text-amber-700">Company, GST, and address are required before generating the invoice.</p>
               </div>
-            )}
+              <Input label="Company Name" value={clientCompanyName} onChange={e => setClientCompanyName(e.target.value)} placeholder="Company name" required />
+              <Input label="GST Number" value={clientGstNumber} onChange={e => setClientGstNumber(e.target.value.toUpperCase())} placeholder="22AAAAA0000A1Z5" required />
+              <Input label="Address" value={clientAddress} onChange={e => setClientAddress(e.target.value)} placeholder="Full address" required />
+            </div>
           </Card>
 
           {/* Dates & Template */}
@@ -329,14 +420,14 @@ export default function CreateInvoicePage() {
                         className="w-full bg-white rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-400 mb-0.5 block">Tax %</label>
-                      <input type="number" min="0" value={item.tax} onChange={e => updateItem(i, 'tax', e.target.value)}
+                      <label className="text-[10px] text-slate-400 mb-0.5 block">GST %</label>
+                      <input type="number" min="0" placeholder="Enter GST" value={item.tax} onChange={e => updateItem(i, 'tax', e.target.value)}
                         className="w-full bg-white rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400" />
                     </div>
                     <div>
                       <label className="text-[10px] text-slate-400 mb-0.5 block">Amount</label>
                       <div className="bg-slate-100 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-700">
-                        {formatCurrency(item.qty * item.rate)}
+                        {formatCurrency(Number(item.qty || 0) * Number(item.rate || 0))}
                       </div>
                     </div>
                   </div>
@@ -381,7 +472,7 @@ export default function CreateInvoicePage() {
                 <ShortcutHint keys={['Ctrl', 'S']} />
               </span>
             </Button>
-            <Button onClick={handleGenerateInvoice} icon={FileText}>Generate Invoice</Button>
+            <Button onClick={handleGenerateInvoice} icon={FileText}>{isEditMode ? 'Update Invoice' : 'Generate Invoice'}</Button>
             <Button onClick={handleDownloadPdf} variant="secondary" icon={Download}>Download PDF</Button>
             <Button onClick={handleCreateShareLink} variant="ghost" icon={Share2}>Share</Button>
           </div>
@@ -389,8 +480,8 @@ export default function CreateInvoicePage() {
 
         {/* Live Preview */}
         {showPreview && (
-          <div className="hidden lg:block">
-            <div className="sticky top-24">
+          <div className="block">
+            <div className="lg:sticky lg:top-24">
               <Card className="!p-0 overflow-hidden">
                 <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                   <p className="text-sm font-medium text-slate-600">Live Preview</p>
@@ -400,10 +491,17 @@ export default function CreateInvoicePage() {
                   {/* Invoice preview */}
                   <div className="flex items-start justify-between mb-8">
                     <div>
-                      <h2 className="text-2xl font-extrabold tracking-tight">
-                        <span className="text-slate-800">voiced</span>
-                        <span className="text-primary-500">In</span>
-                      </h2>
+                      {businessProfile?.logoUrl ? (
+                        <img
+                          src={assetUrl(businessProfile.logoUrl)}
+                          alt="Business logo"
+                          className="mb-2 max-h-14 max-w-40 object-contain"
+                        />
+                      ) : businessProfile?.businessName ? (
+                        <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">{businessProfile.businessName}</h2>
+                      ) : (
+                        <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">Invoice</h2>
+                      )}
                       <p className="text-xs text-slate-400 mt-1">Invoice</p>
                     </div>
                     <div className="text-right">
@@ -417,10 +515,10 @@ export default function CreateInvoicePage() {
                   <div className="mb-8 p-4 bg-slate-50 rounded-xl">
                     <p className="text-xs font-medium text-slate-400 mb-1">BILL TO</p>
                     <p className="text-sm font-semibold text-slate-800">{selectedClient?.name || clientSearch || 'Client Name'}</p>
-                    <p className="text-xs text-slate-500">{selectedClient?.companyName || selectedClient?.company || clientCompanyName || ''}</p>
+                    <p className="text-xs text-slate-500">{clientCompanyName || selectedClient?.companyName || selectedClient?.company || ''}</p>
                     <p className="text-xs text-slate-400">{selectedClient?.email || ''}</p>
-                    {selectedClient?.gstNumber || selectedClient?.gst || clientGstNumber ? <p className="text-xs text-slate-400">GST: {selectedClient?.gstNumber || selectedClient?.gst || clientGstNumber}</p> : null}
-                    {selectedClient?.address || clientAddress ? <p className="text-xs text-slate-400">{selectedClient?.address || clientAddress}</p> : null}
+                    {clientGstNumber || selectedClient?.gstNumber || selectedClient?.gst ? <p className="text-xs text-slate-400">GST: {clientGstNumber || selectedClient?.gstNumber || selectedClient?.gst}</p> : null}
+                    {clientAddress || selectedClient?.address ? <p className="text-xs text-slate-400">{clientAddress || selectedClient?.address}</p> : null}
                   </div>
 
                   {/* Items table */}
@@ -430,6 +528,7 @@ export default function CreateInvoicePage() {
                         <th className="text-left py-2 text-slate-500 font-medium">Item</th>
                         <th className="text-center py-2 text-slate-500 font-medium">Qty</th>
                         <th className="text-right py-2 text-slate-500 font-medium">Rate</th>
+                        <th className="text-center py-2 text-slate-500 font-medium">GST</th>
                         <th className="text-right py-2 text-slate-500 font-medium">Amount</th>
                       </tr>
                     </thead>
@@ -439,7 +538,8 @@ export default function CreateInvoicePage() {
                           <td className="py-2 text-slate-700">{item.description || `Item ${i + 1}`}</td>
                           <td className="py-2 text-center text-slate-600">{item.qty}</td>
                           <td className="py-2 text-right text-slate-600">{formatCurrency(item.rate)}</td>
-                          <td className="py-2 text-right text-slate-800 font-medium">{formatCurrency(item.qty * item.rate)}</td>
+                          <td className="py-2 text-center text-slate-600">{item.tax === '' ? '-' : `${item.tax}%`}</td>
+                          <td className="py-2 text-right text-slate-800 font-medium">{formatCurrency(Number(item.qty || 0) * Number(item.rate || 0) * (1 + Number(item.tax || 0) / 100))}</td>
                         </tr>
                       ))}
                     </tbody>

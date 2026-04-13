@@ -7,7 +7,6 @@ import Logo from '../brand/Logo';
 import ShortcutHint from '../ui/ShortcutHint';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../utils/api';
 
 function isEditableElement(element) {
   if (!element) return false;
@@ -24,8 +23,8 @@ function findVisibleElement(selector) {
 }
 
 export default function AppLayout() {
-  const { toggleSidebar, closeSidebar, brandLogoUrl, setBrandLogoUrl } = useApp();
-  const { user, logout, isAuthenticated } = useAuth();
+  const { toggleSidebar, closeSidebar } = useApp();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -60,6 +59,7 @@ export default function AppLayout() {
     const path = location.pathname;
     if (path === '/dashboard') return 'Dashboard';
     if (path === '/invoices/new') return 'Create Invoice';
+    if (path.startsWith('/invoices/') && path.endsWith('/edit')) return 'Edit Invoice';
     if (path === '/invoices') return 'Invoices';
     if (path.startsWith('/clients/')) return 'Client Details';
     if (path === '/clients') return 'Clients';
@@ -70,21 +70,6 @@ export default function AppLayout() {
     if (path === '/settings') return 'Settings';
     return 'voicedIn';
   };
-
-  useEffect(() => {
-    if (!isAuthenticated) return undefined;
-
-    let isMounted = true;
-    api.get('/business-profile')
-      .then(data => {
-        if (isMounted) setBrandLogoUrl(data.profile?.logoUrl || null);
-      })
-      .catch(() => {});
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isAuthenticated, setBrandLogoUrl]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -141,7 +126,7 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar logoUrl={brandLogoUrl} />
+      <Sidebar />
 
       {/* Main content */}
       <div className="lg:pl-64 min-h-screen pb-20 lg:pb-0">
@@ -152,7 +137,9 @@ export default function AppLayout() {
               <button onClick={toggleSidebar} className="lg:hidden p-2 rounded-xl hover:bg-slate-100 cursor-pointer">
                 <Menu className="w-5 h-5 text-slate-600" />
               </button>
-              <div className="lg:hidden"><Logo size="sm" imageSrc={brandLogoUrl} /></div>
+              <Link to="/dashboard" className="lg:hidden" aria-label="Go to dashboard">
+                <Logo size="sm" />
+              </Link>
               <h1 className="hidden lg:block text-lg font-semibold text-slate-800">{getPageTitle()}</h1>
             </div>
             <div className="relative flex items-center gap-3">

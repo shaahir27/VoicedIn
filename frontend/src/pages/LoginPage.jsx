@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
 import GoogleSignInButton from '../components/auth/GoogleSignInButton';
 import Logo from '../components/brand/Logo';
@@ -16,13 +16,15 @@ export default function LoginPage() {
   const { login, loginWithGoogle } = useAuth();
   const { showToast } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo = location.state?.redirectTo || '/dashboard';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       await login(email, password, rememberMe);
-      navigate('/dashboard');
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       showToast(err.message || 'Login failed', 'error');
     } finally {
@@ -34,13 +36,13 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await loginWithGoogle(idToken, rememberMe);
-      navigate('/dashboard');
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       showToast(err.message || 'Google login failed', 'error');
     } finally {
       setLoading(false);
     }
-  }, [loginWithGoogle, navigate, rememberMe, showToast]);
+  }, [loginWithGoogle, navigate, redirectTo, rememberMe, showToast]);
 
   const handleGoogleError = useCallback((message) => {
     showToast(message || 'Google login failed', 'warning');

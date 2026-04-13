@@ -195,6 +195,15 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 8,
   },
+  demoWatermark: {
+    position: 'absolute',
+    top: 330,
+    left: 85,
+    fontSize: 64,
+    fontFamily: 'Helvetica-Bold',
+    color: '#fee2e2',
+    transform: 'rotate(-28deg)',
+  },
 });
 
 export async function downloadInvoicePdf(invoiceId, invoiceNumber) {
@@ -218,11 +227,13 @@ export async function downloadInvoicePdf(invoiceId, invoiceNumber) {
 
 function InvoicePdfDocument({ invoice, businessProfile }) {
   const items = invoice?.items || [];
-  const businessName = businessProfile.businessName || businessProfile.name || 'VoicedIn';
+  const businessName = businessProfile.businessName || businessProfile.name || '';
   const clientCompany = invoice?.clientCompanyName || invoice?.company || invoice?.clientDetails?.companyName || '';
   const clientGst = invoice?.clientGstNumber || invoice?.clientDetails?.gstNumber || '';
   const clientAddress = invoice?.clientAddress || invoice?.clientDetails?.address || '';
   const includeBankDetails = invoice?.includeBankDetails ?? businessProfile.includeBankDetails;
+  const currency = invoice?.currency || businessProfile.currency || 'INR';
+  const isDemo = Boolean(invoice?.isDemo || businessProfile?.isDemo);
   const logoSrc = getPdfLogoSource(businessProfile.logoUrl);
   const showSidePanel = Boolean(
     invoice?.notes ||
@@ -233,14 +244,15 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
   return (
     <Document
       title={`Invoice ${invoice?.number || ''}`}
-      author={businessName}
+      author={businessName || 'VoicedIn'}
       subject="Invoice"
     >
       <Page size="A4" style={styles.page} wrap>
+        {isDemo ? <Text style={styles.demoWatermark} fixed>DEMO - NOT VALID</Text> : null}
         <View style={styles.header} fixed>
           <View style={styles.brandBlock}>
             {logoSrc ? <Image src={logoSrc} style={styles.logo} /> : null}
-            <Text style={styles.brandName}>{businessName}</Text>
+            {businessName ? <Text style={styles.brandName}>{businessName}</Text> : null}
             <Text style={styles.brandSubtle}>Invoice</Text>
           </View>
           <View style={styles.invoiceMeta}>
@@ -249,13 +261,14 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
             {invoice?.date ? <Text style={styles.metaLine}>Date: {invoice.date}</Text> : null}
             {invoice?.dueDate ? <Text style={styles.metaLine}>Due: {invoice.dueDate}</Text> : null}
             {invoice?.status ? <Text style={styles.metaLine}>Status: {invoice.status}</Text> : null}
+            <Text style={styles.metaLine}>Currency: {currency}</Text>
           </View>
         </View>
 
         <View style={styles.detailGrid}>
           <View style={styles.detailCard}>
             <Text style={styles.sectionLabel}>From</Text>
-            <Text style={styles.detailName}>{businessName}</Text>
+            {businessName ? <Text style={styles.detailName}>{businessName}</Text> : null}
             {businessProfile.address ? <Text style={styles.detailText}>{businessProfile.address}</Text> : null}
             {businessProfile.email || businessProfile.phone ? (
               <Text style={styles.detailText}>{[businessProfile.email, businessProfile.phone].filter(Boolean).join(' | ')}</Text>
@@ -291,9 +304,9 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
               <Text style={styles.colIndex}>{index + 1}</Text>
               <Text style={styles.colDescription}>{item.description || ''}</Text>
               <Text style={styles.colQty}>{formatNumber(item.qty)}</Text>
-              <Text style={styles.colRate}>{formatMoney(item.rate)}</Text>
+              <Text style={styles.colRate}>{formatMoney(item.rate, currency)}</Text>
               <Text style={styles.colTax}>{formatNumber(item.tax)}%</Text>
-              <Text style={styles.colAmount}>{formatMoney(lineAmount(item))}</Text>
+              <Text style={styles.colAmount}>{formatMoney(lineAmount(item), currency)}</Text>
             </View>
           )) : (
             <View style={styles.tableRow}>
@@ -325,22 +338,20 @@ function InvoicePdfDocument({ invoice, businessProfile }) {
 
           <View style={styles.summary}>
             <View style={styles.totalRow}>
-              <Text>Sub Total:</Text>
-              <Text>{formatMoney(invoice?.subtotal)}</Text>
+              <Text>Subtotal:</Text>
+              <Text>{formatMoney(invoice?.subtotal, currency)}</Text>
             </View>
             <View style={styles.totalRow}>
               <Text>Tax:</Text>
-              <Text>{formatMoney(invoice?.taxTotal)}</Text>
+              <Text>{formatMoney(invoice?.taxTotal, currency)}</Text>
             </View>
             <View style={styles.grandTotal}>
-              <Text>Total:</Text>
-              <Text>{formatMoney(invoice?.total)}</Text>
+              <Text>Total ({currency}):</Text>
+              <Text>{formatMoney(invoice?.total, currency)}</Text>
             </View>
-            <Text style={styles.signature}>Authorised Sign</Text>
+            <Text style={styles.signature}>Authorized Signatory</Text>
           </View>
         </View>
-
-        <Text style={styles.footer} fixed>Generated by VoicedIn</Text>
       </Page>
     </Document>
   );
@@ -390,10 +401,11 @@ function lineAmount(item) {
   return qty * rate * (1 + tax / 100);
 }
 
-function formatMoney(amount) {
+function formatMoney(amount, currency = 'INR') {
+  const safeCurrency = ['INR', 'USD', 'EUR'].includes(currency) ? currency : 'INR';
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'INR',
+    currency: safeCurrency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(Number(amount || 0));

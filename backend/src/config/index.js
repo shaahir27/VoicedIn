@@ -31,7 +31,8 @@ const config = {
   },
   premiumPayment: {
     amount: Number(process.env.PREMIUM_PAYMENT_AMOUNT || 49),
-    upiId: process.env.PREMIUM_PAYMENT_UPI_ID || '',
+    upiId: process.env.PREMIUM_PAYMENT_UPI_ID || 'shaahir2007@okhdfcbank',
+    phone: process.env.PREMIUM_PAYMENT_PHONE || '7904515049',
     payeeName: process.env.PREMIUM_PAYMENT_PAYEE_NAME || 'VoicedIn',
     qrUrl: process.env.PREMIUM_PAYMENT_QR_URL || '/my-payment-qr.jpeg',
     note: process.env.PREMIUM_PAYMENT_NOTE || 'Send payment screenshot after scanning the QR. Premium is activated after confirmation.',

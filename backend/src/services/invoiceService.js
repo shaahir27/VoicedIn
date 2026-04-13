@@ -1,12 +1,25 @@
 import pool from '../db/pool.js';
 import { transformInvoice, transformInvoiceItem } from '../utils/transformers.js';
 import { NotFoundError, ValidationError, AppError } from '../utils/errors.js';
-import { validateRequired, validateInvoiceItems, validateDate } from '../utils/validators.js';
+import { validateRequired, validateInvoiceItems, validateGST } from '../utils/validators.js';
 import { getNextNumber } from './invoiceNumberService.js';
 
 export async function createInvoice(userId, data, isDemo = false) {
-    validateRequired(['clientName', 'date'], data);
-    if (data.items) validateInvoiceItems(data.items);
+    const status = data.isDraft || data.status === 'draft' ? 'draft' : (data.status || 'unpaid');
+    const isDraft = status === 'draft';
+    const clientName = (data.clientName || '').trim() || (isDraft ? 'Draft client' : '');
+
+    if (isDraft) {
+        validateRequired(['date'], data);
+    } else {
+        validateRequired(['clientName', 'date'], { ...data, clientName });
+    }
+
+    const rawItems = Array.isArray(data.items) ? data.items : [];
+    const items = isDraft
+        ? rawItems.filter(item => item.description?.trim() && Number(item.qty) > 0 && Number(item.rate) >= 0)
+        : rawItems;
+    if (!isDraft) validateInvoiceItems(items);
 
     // Demo restriction: max 3 invoices
     if (isDemo) {
@@ -19,7 +32,6 @@ export async function createInvoice(userId, data, isDemo = false) {
     const number = data.number || await getNextNumber(userId);
 
     // Compute totals server-side
-    const items = data.items || [];
     let subtotal = 0;
     let taxTotal = 0;
     for (const item of items) {
@@ -30,12 +42,18 @@ export async function createInvoice(userId, data, isDemo = false) {
     }
     const total = subtotal + taxTotal;
 
-    const status = data.isDraft ? 'draft' : (data.status || 'unpaid');
-    const company = data.company || data.companyName || data.company_name || '';
-    const clientCompanyName = data.clientCompanyName || data.companyName || data.company_name || company || '';
-    const clientGstNumber = data.clientGstNumber || data.gstNumber || data.gst_number || '';
-    const clientAddress = data.clientAddress || data.address || '';
+    const company = (data.company || data.companyName || data.company_name || '').trim();
+    const clientCompanyName = (data.clientCompanyName || data.companyName || data.company_name || company || '').trim();
+    const rawClientGstNumber = (data.clientGstNumber || data.gstNumber || data.gst_number || '').trim();
+    const clientGstNumber = rawClientGstNumber ? validateGST(rawClientGstNumber) : '';
+    const clientAddress = (data.clientAddress || data.address || '').trim();
     const includeBankDetails = await resolveIncludeBankDetails(userId, data.includeBankDetails);
+
+    if (!isDraft) {
+        if (!clientCompanyName) throw new ValidationError('Client company name is required');
+        if (!clientGstNumber) throw new ValidationError('Client GST number is required');
+        if (!clientAddress) throw new ValidationError('Client address is required');
+    }
 
     const client = await pool.connect();
     try {
@@ -44,7 +62,7 @@ export async function createInvoice(userId, data, isDemo = false) {
         const { rows } = await client.query(
             `INSERT INTO invoices (user_id, client_id, number, client_name, company, client_company_name, client_gst_number, client_address, status, date, due_date, subtotal, tax_total, total, notes, terms, template, currency, is_draft, include_bank_details)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *`,
-            [userId, data.clientId || null, number, data.clientName, company, clientCompanyName, clientGstNumber, clientAddress, status, data.date, data.dueDate || null, subtotal, taxTotal, total, data.notes || '', data.terms || '', data.template || 'modern', data.currency || 'INR', data.isDraft || false, includeBankDetails]
+            [userId, data.clientId || null, number, clientName, company, clientCompanyName, clientGstNumber, clientAddress, status, data.date, data.dueDate || null, subtotal, taxTotal, total, data.notes || '', data.terms || '', data.template || 'modern', data.currency || 'INR', isDraft, includeBankDetails]
         );
         const invoice = rows[0];
 
@@ -64,11 +82,11 @@ export async function createInvoice(userId, data, isDemo = false) {
         // If client_id is provided, auto-create/link client
         if (data.clientId) {
             // Client already exists, no action needed
-        } else if (data.clientName) {
+        } else if (clientName && clientName !== 'Draft client') {
             // Check if client with this name exists
             const { rows: existingClients } = await client.query(
                 'SELECT id FROM clients WHERE user_id = $1 AND name = $2 LIMIT 1',
-                [userId, data.clientName]
+                [userId, clientName]
             );
             if (existingClients.length > 0) {
                 await client.query('UPDATE invoices SET client_id = $1 WHERE id = $2', [existingClients[0].id, invoice.id]);
@@ -88,6 +106,7 @@ export async function createInvoice(userId, data, isDemo = false) {
 }
 
 export async function updateInvoice(userId, invoiceId, data) {
+    const isDraft = data.isDraft || data.status === 'draft';
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -95,10 +114,13 @@ export async function updateInvoice(userId, invoiceId, data) {
         // Recompute if items changed
         let subtotal, taxTotal, total;
         if (data.items) {
-            validateInvoiceItems(data.items);
+            const items = isDraft
+                ? data.items.filter(item => item.description?.trim() && Number(item.qty) > 0 && Number(item.rate) >= 0)
+                : data.items;
+            if (!isDraft) validateInvoiceItems(items);
             subtotal = 0;
             taxTotal = 0;
-            for (const item of data.items) {
+            for (const item of items) {
                 const lineSubtotal = item.qty * item.rate;
                 const lineTax = lineSubtotal * (item.tax || 0) / 100;
                 subtotal += lineSubtotal;
@@ -108,8 +130,8 @@ export async function updateInvoice(userId, invoiceId, data) {
 
             // Replace items
             await client.query('DELETE FROM invoice_items WHERE invoice_id = $1', [invoiceId]);
-            for (let i = 0; i < data.items.length; i++) {
-                const item = data.items[i];
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
                 const lineSubtotal = item.qty * item.rate;
                 const lineTax = lineSubtotal * (item.tax || 0) / 100;
                 const lineTotal = lineSubtotal + lineTax;

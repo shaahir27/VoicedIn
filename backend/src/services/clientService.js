@@ -1,7 +1,7 @@
 import pool from '../db/pool.js';
 import { transformClient } from '../utils/transformers.js';
-import { NotFoundError } from '../utils/errors.js';
-import { validateRequired } from '../utils/validators.js';
+import { NotFoundError, ValidationError } from '../utils/errors.js';
+import { validateRequired, validateGST } from '../utils/validators.js';
 
 function pickClientCompany(data) {
     return data.companyName ?? data.company_name ?? data.company ?? null;
@@ -69,22 +69,28 @@ export async function getClient(userId, clientId) {
 
 export async function createClient(userId, data) {
     validateRequired(['name'], data);
-    const company = pickClientCompany(data);
-    const gst = pickClientGst(data);
+    const company = (pickClientCompany(data) || '').trim();
+    const rawGst = (pickClientGst(data) || '').trim();
+    const gst = rawGst ? validateGST(rawGst) : '';
+    const address = (data.address || '').trim();
+
+    if (!company) throw new ValidationError('Company name is required');
+    if (!gst) throw new ValidationError('GST number is required');
+    if (!address) throw new ValidationError('Address is required');
 
     const { rows } = await pool.query(
         `INSERT INTO clients (user_id, name, email, phone, company_name, gst_number, company, gst, address, notes)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
         [
             userId,
-            data.name,
+            data.name.trim(),
             data.email || null,
             data.phone || null,
             company,
             gst,
             company,
             gst,
-            data.address || null,
+            address,
             data.notes || null,
         ]
     );
@@ -93,7 +99,8 @@ export async function createClient(userId, data) {
 
 export async function updateClient(userId, clientId, data) {
     const company = pickClientCompany(data);
-    const gst = pickClientGst(data);
+    const rawGst = pickClientGst(data);
+    const gst = rawGst ? validateGST(rawGst) : rawGst;
 
     const { rows } = await pool.query(
         `UPDATE clients SET

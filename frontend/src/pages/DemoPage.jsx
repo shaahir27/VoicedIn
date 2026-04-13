@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Lock, Sparkles, Eye, Crown, FileText, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, Lock, Sparkles, Eye, Crown, FileText, Plus } from 'lucide-react';
 import Navbar from '../components/layout/Navbar';
 import Footer from '../components/layout/Footer';
 import Card from '../components/ui/Card';
@@ -8,7 +8,6 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
-import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
 
 const demoItems = [
@@ -18,7 +17,6 @@ const demoItems = [
 
 export default function DemoPage() {
   const navigate = useNavigate();
-  const { loginDemo, isAuthenticated } = useAuth();
   const [items, setItems] = useState(demoItems);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [clientName, setClientName] = useState('Acme Corp');
@@ -28,13 +26,8 @@ export default function DemoPage() {
   const taxTotal = items.reduce((s, i) => s + (i.qty * i.rate * i.tax) / 100, 0);
   const total = subtotal + taxTotal;
 
-  const handleTryDashboard = async () => {
-    try {
-      await loginDemo();
-      navigate('/dashboard');
-    } catch (err) {
-      console.error('Demo login failed', err);
-    }
+  const handleTryDashboard = () => {
+    navigate('/login', { state: { redirectTo: '/subscription' } });
   };
 
   const handleBlockedAction = () => setShowUpgrade(true);
@@ -133,7 +126,7 @@ export default function DemoPage() {
                   <Button fullWidth variant="ghost" onClick={handleTryDashboard} icon={Eye}>Explore Full Dashboard</Button>
                 </div>
                 <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-700">
-                  💡 Demo mode: PDF downloads are watermarked. <Link to="/signup" className="font-semibold text-primary-600 underline">Upgrade to Premium</Link> for clean exports.
+                  Demo mode: PDF downloads are watermarked. <Link to="/login" state={{ redirectTo: '/subscription' }} className="font-semibold text-primary-600 underline">Upgrade to Premium</Link> for clean exports.
                 </div>
               </Card>
             )}
@@ -216,7 +209,7 @@ export default function DemoPage() {
           <h3 className="text-lg font-bold text-slate-800 mb-2">Unlock Full Access</h3>
           <p className="text-sm text-slate-500 mb-6">Get clean PDF downloads, client memory, payment tracking, and more for just ₹49/month.</p>
           <div className="space-y-2">
-            <Link to="/signup">
+            <Link to="/login" state={{ redirectTo: '/subscription' }}>
               <Button fullWidth size="lg">Get Premium — ₹49/mo</Button>
             </Link>
             <Button fullWidth variant="ghost" onClick={() => setShowUpgrade(false)}>Continue Demo</Button>
