@@ -75,6 +75,12 @@ export async function generateInvoicePDF(req, res, next) {
         const invoice = await invoiceService.getInvoice(req.user.id, req.params.id);
         const { rows } = await pool.query('SELECT * FROM business_profiles WHERE user_id = $1', [req.user.id]);
         const profile = rows.length > 0 ? transformBusinessProfile(rows[0]) : {};
+        if (req.isDemo) {
+            const { rows: countRows } = await pool.query('SELECT COUNT(*) as total FROM invoices WHERE user_id = $1', [req.user.id]);
+            if (Number(countRows[0]?.total || 0) > 3) {
+                throw new AppError('Demo is limited to 3 invoices. Upgrade to Premium for more downloads.', 403);
+            }
+        }
 
         const result = await generatePDF(invoice, profile, invoice.template, req.isDemo);
 

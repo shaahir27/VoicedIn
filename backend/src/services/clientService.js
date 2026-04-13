@@ -129,7 +129,7 @@ export async function updateClient(userId, clientId, data) {
         ]
     );
     if (rows.length === 0) throw new NotFoundError('Client');
-    return transformClient(rows[0]);
+    return getClient(userId, clientId);
 }
 
 export async function deleteClient(userId, clientId) {

@@ -1,7 +1,7 @@
 import pool from '../db/pool.js';
 import { transformInvoice, transformInvoiceItem } from '../utils/transformers.js';
 import { NotFoundError, ValidationError, AppError } from '../utils/errors.js';
-import { validateRequired, validateInvoiceItems, validateGST } from '../utils/validators.js';
+import { validateRequired, validateInvoiceItems, validateGST, validateEmail, validatePhone } from '../utils/validators.js';
 import { getNextNumber } from './invoiceNumberService.js';
 
 export async function createInvoice(userId, data, isDemo = false) {
@@ -47,6 +47,10 @@ export async function createInvoice(userId, data, isDemo = false) {
     const rawClientGstNumber = (data.clientGstNumber || data.gstNumber || data.gst_number || '').trim();
     const clientGstNumber = rawClientGstNumber ? validateGST(rawClientGstNumber) : '';
     const clientAddress = (data.clientAddress || data.address || '').trim();
+    const rawClientEmail = (data.clientEmail || data.email || '').trim();
+    const clientEmail = rawClientEmail ? validateEmail(rawClientEmail) : '';
+    const rawClientPhone = (data.clientPhone || data.phone || '').trim();
+    const clientPhone = rawClientPhone ? validatePhone(rawClientPhone) : '';
     const includeBankDetails = await resolveIncludeBankDetails(userId, data.includeBankDetails);
 
     if (!isDraft) {
@@ -79,18 +83,16 @@ export async function createInvoice(userId, data, isDemo = false) {
             );
         }
 
-        // If client_id is provided, auto-create/link client
-        if (data.clientId) {
-            // Client already exists, no action needed
-        } else if (clientName && clientName !== 'Draft client') {
-            // Check if client with this name exists
-            const { rows: existingClients } = await client.query(
-                'SELECT id FROM clients WHERE user_id = $1 AND name = $2 LIMIT 1',
-                [userId, clientName]
-            );
-            if (existingClients.length > 0) {
-                await client.query('UPDATE invoices SET client_id = $1 WHERE id = $2', [existingClients[0].id, invoice.id]);
-            }
+        if (!data.clientId && clientName && clientName !== 'Draft client' && clientCompanyName && clientGstNumber && clientAddress) {
+            const clientId = await findOrCreateClientForInvoice(client, userId, {
+                name: clientName,
+                company: clientCompanyName,
+                gst: clientGstNumber,
+                address: clientAddress,
+                email: clientEmail || null,
+                phone: clientPhone || null,
+            });
+            await client.query('UPDATE invoices SET client_id = $1 WHERE id = $2', [clientId, invoice.id]);
         }
 
         await client.query('COMMIT');
@@ -310,6 +312,44 @@ export async function duplicateInvoice(userId, invoiceId) {
         number: newNumber,
     });
     return newInvoice;
+}
+
+async function findOrCreateClientForInvoice(client, userId, data) {
+    const { rows: existingClients } = await client.query(
+        `SELECT id
+         FROM clients
+         WHERE user_id = $1
+           AND (LOWER(name) = LOWER($2) OR gst_number = $3 OR gst = $3)
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId, data.name, data.gst]
+    );
+
+    if (existingClients.length > 0) {
+        const clientId = existingClients[0].id;
+        await client.query(
+            `UPDATE clients SET
+                company_name = COALESCE(NULLIF(company_name, ''), $2),
+                company = COALESCE(NULLIF(company, ''), $2),
+                gst_number = COALESCE(NULLIF(gst_number, ''), $3),
+                gst = COALESCE(NULLIF(gst, ''), $3),
+                address = COALESCE(NULLIF(address, ''), $4),
+                email = COALESCE(email, $5),
+                phone = COALESCE(phone, $6)
+             WHERE id = $1`,
+            [clientId, data.company, data.gst, data.address, data.email, data.phone]
+        );
+        return clientId;
+    }
+
+    const { rows } = await client.query(
+        `INSERT INTO clients (user_id, name, email, phone, company_name, gst_number, company, gst, address, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $5, $6, $7, $8)
+         RETURNING id`,
+        [userId, data.name, data.email, data.phone, data.company, data.gst, data.address, 'Created from invoice']
+    );
+
+    return rows[0].id;
 }
 
 async function resolveIncludeBankDetails(userId, includeBankDetails) {

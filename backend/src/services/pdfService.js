@@ -51,8 +51,8 @@ export async function generatePDF(invoiceData, businessProfile, templateId = 'mo
 
     if (isDemo) {
         html = html.replace('</body>', `
-      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-45deg);font-size:100px;color:rgba(200,0,0,0.1);font-weight:bold;z-index:9999;pointer-events:none;">
-        DEMO - NOT VALID
+      <div style="position:fixed;top:16px;right:18px;padding:4px 9px;border:1px solid rgba(220,38,38,0.18);border-radius:999px;background:rgba(248,113,113,0.08);color:#dc2626;font-size:12px;font-weight:700;letter-spacing:.08em;z-index:9999;pointer-events:none;">
+        DEMO COPY
       </div>
     </body>`);
     }
@@ -156,7 +156,7 @@ function buildInvoiceHtml(invoiceData, businessProfile = {}, templateId = 'moder
             <td class="description">${escapeHtml(item.description || '')}</td>
             <td>${qty}</td>
             <td>${formatINR(rate, currency)}</td>
-            <td>${tax}%</td>
+            <td>${tax}</td>
             <td>${formatINR(amount, currency)}</td>
           </tr>
         `;
@@ -331,48 +331,48 @@ function buildInvoiceHtml(invoiceData, businessProfile = {}, templateId = 'moder
 function getTemplateTheme(templateId = 'modern') {
     const themes = {
         modern: {
-            primary: '#4f46e5',
+            primary: '#2563EB',
             page: '#ffffff',
-            card: '#f8fafc',
+            card: '#DBEAFE',
             text: '#111827',
-            muted: '#4b5563',
-            line: '#e5e7eb',
+            muted: '#64748b',
+            line: '#BFDBFE',
             font: 'Inter, "Segoe UI", Arial, sans-serif',
         },
         classic: {
             primary: '#111827',
             page: '#ffffff',
-            card: '#ffffff',
+            card: '#F3F4F6',
             text: '#111827',
             muted: '#4b5563',
             line: '#d1d5db',
             font: 'Georgia, "Times New Roman", serif',
         },
         minimal: {
-            primary: '#0f172a',
+            primary: '#0F766E',
             page: '#ffffff',
-            card: '#ffffff',
+            card: '#F0FDFA',
             text: '#0f172a',
             muted: '#64748b',
-            line: '#e2e8f0',
+            line: '#99F6E4',
             font: '"Segoe UI", Arial, sans-serif',
         },
         elegant: {
-            primary: '#7c3aed',
-            page: '#fdfcff',
-            card: '#f5f3ff',
-            text: '#1f1633',
-            muted: '#5b5368',
-            line: '#ddd6fe',
+            primary: '#BE123C',
+            page: '#fffafa',
+            card: '#FFF1F2',
+            text: '#2D1320',
+            muted: '#7F1D1D',
+            line: '#FFE4E6',
             font: 'Georgia, "Times New Roman", serif',
         },
         bold: {
-            primary: '#047857',
+            primary: '#16A34A',
             page: '#fbfffd',
-            card: '#ecfdf5',
+            card: '#DCFCE7',
             text: '#052e2b',
             muted: '#31534c',
-            line: '#bbf7d0',
+            line: '#86EFAC',
             font: '"Segoe UI", Arial, sans-serif',
         },
     };
@@ -506,7 +506,7 @@ function drawPrimaryHeader(page, invoiceData, businessProfile, isDemo, fonts, th
     drawText(page, safeText(`Currency: ${currency}`), 350, detailY, 10, fonts.regular, { color: theme.muted });
 
     if (isDemo) {
-        drawText(page, 'DEMO - NOT VALID', 350, detailY - 16, 10, fonts.bold, { color: '#dc2626' });
+        drawText(page, 'DEMO COPY', 468, detailY - 16, 9, fonts.bold, { color: '#dc2626' });
     }
 
     drawRule(page, PAGE_MARGIN, headerY - 18, A4_WIDTH - PAGE_MARGIN, theme.primary, 1.2);
@@ -551,7 +551,7 @@ function drawItemRow(page, index, item, y, font, theme, currency = 'INR') {
     });
     drawText(page, String(item?.qty ?? 0), 306, y, 10, font, { color: theme.text });
     drawText(page, formatFallbackMoney(item?.rate, currency), 350, y, 10, font, { color: theme.text });
-    drawText(page, `${Number(item?.tax || 0)}%`, 420, y, 10, font, { color: theme.text });
+    drawText(page, `${Number(item?.tax || 0)}`, 420, y, 10, font, { color: theme.text });
     drawText(page, formatFallbackMoney(amount, currency), 486, y, 10, font, { color: theme.text });
 
     drawRule(page, PAGE_MARGIN, y - rowHeight + 2, A4_WIDTH - PAGE_MARGIN, theme.line);
@@ -637,7 +637,7 @@ function drawFilledRect(page, x, y, width, height, color) {
 }
 
 function drawDemoWatermark(page, fonts) {
-    page.content.push(`BT ${pdfColor('#fee2e2', 'rg')} /${fonts.bold} 64 Tf 0.866 -0.5 0.5 0.866 110 320 Tm (DEMO - NOT VALID) Tj ET`);
+    page.content.push(`BT ${pdfColor('#dc2626', 'rg')} /${fonts.bold} 12 Tf 0.985 -0.174 0.174 0.985 470 802 Tm (DEMO COPY) Tj ET`);
 }
 
 function textCommand(text, x, y, size, font, options = {}) {
