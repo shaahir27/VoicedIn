@@ -58,6 +58,7 @@ export default function GoogleSignInButton({ text = 'signin_with', onCredential,
     return () => observer.disconnect();
   }, []);
 
+  // Initialize Google Sign-In once
   useEffect(() => {
     let isMounted = true;
 
@@ -68,7 +69,7 @@ export default function GoogleSignInButton({ text = 'signin_with', onCredential,
 
     loadGoogleScript()
       .then(() => {
-        if (!isMounted || !buttonRef.current || !window.google?.accounts?.id) return;
+        if (!isMounted || !window.google?.accounts?.id) return;
 
         window.google.accounts.id.initialize({
           client_id: clientId,
@@ -81,6 +82,26 @@ export default function GoogleSignInButton({ text = 'signin_with', onCredential,
             onError?.('Google did not return a sign-in credential');
           },
         });
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setIsUnavailable(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [clientId, onCredential, onError]);
+
+  // Render the button when dimensions or text change
+  useEffect(() => {
+    let isMounted = true;
+    
+    if (!clientId || isUnavailable || !buttonRef.current) return undefined;
+
+    loadGoogleScript()
+      .then(() => {
+        if (!isMounted || !window.google?.accounts?.id || !buttonRef.current) return;
 
         buttonRef.current.innerHTML = '';
         window.google.accounts.id.renderButton(buttonRef.current, {
@@ -92,16 +113,12 @@ export default function GoogleSignInButton({ text = 'signin_with', onCredential,
           text,
           width: buttonWidth,
         });
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setIsUnavailable(true);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [buttonWidth, clientId, onCredential, onError, text]);
+  }, [buttonWidth, clientId, text, isUnavailable]);
 
   if (isUnavailable) {
     return (
