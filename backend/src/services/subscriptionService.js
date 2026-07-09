@@ -1,35 +1,8 @@
 import pool from '../db/pool.js';
 import config from '../config/index.js';
-
-let premiumRequestSchemaPromise = null;
-
-function ensurePremiumPaymentRequestSchema() {
-    if (!premiumRequestSchemaPromise) {
-        premiumRequestSchemaPromise = pool.query(`
-            CREATE TABLE IF NOT EXISTS premium_payment_requests (
-              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-              user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-              amount DECIMAL(8,2) NOT NULL DEFAULT 49,
-              currency VARCHAR(5) DEFAULT 'INR',
-              upi_id VARCHAR(255),
-              status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-              note TEXT,
-              requested_at TIMESTAMPTZ DEFAULT NOW(),
-              approved_at TIMESTAMPTZ,
-              approved_by VARCHAR(255)
-            );
-            CREATE INDEX IF NOT EXISTS idx_premium_payment_requests_status ON premium_payment_requests(status);
-            CREATE INDEX IF NOT EXISTS idx_premium_payment_requests_user_id ON premium_payment_requests(user_id);
-        `).catch(err => {
-            premiumRequestSchemaPromise = null;
-            throw err;
-        });
-    }
-    return premiumRequestSchemaPromise;
-}
+import { logAuditEvent } from './auditService.js';
 
 export async function getSubscription(userId) {
-    await ensurePremiumPaymentRequestSchema();
     const { rows } = await pool.query(
         `SELECT s.*, u.demo_used, u.demo_started_at, u.demo_completed_at
      FROM subscriptions s
@@ -89,8 +62,6 @@ export async function createCheckout(userId) {
 }
 
 export async function createPaymentRequest(userId) {
-    await ensurePremiumPaymentRequestSchema();
-
     const subscription = await getSubscription(userId);
     if (subscription.status === 'active') {
         return { request: null, message: 'This account is already Premium.' };
@@ -111,6 +82,11 @@ export async function createPaymentRequest(userId) {
 
     const request = transformPaymentRequest(rows[0]);
     console.log(`[godmode] Premium payment approval requested: request=${request.id} user=${userId} amount=${request.amount}`);
+    await logAuditEvent('subscription.payment_request_created', {
+        actorUserId: userId,
+        targetUserId: userId,
+        metadata: { requestId: request.id, amount: request.amount, currency: request.currency },
+    });
     return { request, message: 'Payment request sent to admin for approval.' };
 }
 
@@ -132,7 +108,6 @@ function getStaticPaymentInstructions() {
 }
 
 async function getLatestPaymentRequest(userId, status) {
-    await ensurePremiumPaymentRequestSchema();
     const params = [userId];
     let query = `
         SELECT ppr.*, u.name AS user_name, u.email AS user_email
@@ -167,5 +142,5 @@ export function transformPaymentRequest(row) {
     };
 }
 
-export { ensurePremiumPaymentRequestSchema, getStaticPaymentInstructions };
+export { getStaticPaymentInstructions };
 

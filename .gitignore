@@ -14,3 +14,5 @@ backend/uploads/logos/*
 
 frontend/dist/
 frontend/*.log
+
+*.zip

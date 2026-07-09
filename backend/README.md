@@ -17,8 +17,8 @@ cp .env.example .env
 createdb voicedin
 # Or use psql: CREATE DATABASE voicedin;
 
-# 4. Run migrations
-psql -d voicedin -f src/db/migrations/001_initial.sql
+# 4. Run all migrations
+npm run migrate
 
 # 5. (Optional) Seed sample data
 psql -d voicedin -f src/db/seed.sql
@@ -44,11 +44,37 @@ Premium activation is manual: after confirming payment, update the user's subscr
 ## Tech Stack
 - **Runtime**: Node.js (ES modules)
 - **Framework**: Express 4
-- **Database**: PostgreSQL (pg driver)
+- **Database**: PostgreSQL via `pg` (Supabase Postgres recommended for production)
 - **Auth**: JWT + Google OAuth
 - **PDF**: Puppeteer
-- **Exports**: xlsx library
-- **File uploads**: Multer
+- **Exports**: ExcelJS for `.xlsx` plus CSV/PDF generation
+- **File uploads**: Multer + Supabase Storage in production, local uploads as a development fallback
+
+## Production Database & Storage
+
+Production should point `DATABASE_URL` at the Supabase Postgres connection string and run `npm run migrate` before serving traffic. The backend remains the only database access path; do not expose database credentials to the frontend.
+
+Required production settings:
+
+```env
+DATABASE_URL=postgresql://...
+MIGRATION_REQUIRED_VERSION=009_enable_rls_on_hardening_tables.sql
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_STORAGE_PUBLIC_BUCKET=public-assets
+SUPABASE_STORAGE_PRIVATE_BUCKET=private-assets
+```
+
+Create the Supabase Storage buckets before deploy. `public-assets` is used for business logos, and `private-assets` is used for generated invoices and exports served through authenticated backend routes.
+
+Existing files under `uploads/` are not moved automatically when Supabase Storage is enabled. Run a dry-run first, then apply the backfill after the buckets and database env vars are configured:
+
+```bash
+npm run migrate:uploads
+npm run migrate:uploads -- --apply
+```
+
+The backfill copies matched invoice PDFs to the private bucket and business logos to the public bucket, then updates `pdf_storage_key` and `logo_storage_key`. It intentionally leaves local files in place as a rollback fallback. Legacy export files are not backfilled because their filenames do not include enough user ownership information to safely map them to `users/{userId}/exports/...`.
 
 ## API Endpoints
 

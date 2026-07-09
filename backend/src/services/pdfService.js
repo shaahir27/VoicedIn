@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import config from '../config/index.js';
+import { storeInvoicePdf } from './storageService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const A4_WIDTH = 595;
@@ -41,7 +42,7 @@ function resolveBrowserExecutablePath(puppeteer) {
     }
 }
 
-export async function generatePDF(invoiceData, businessProfile, templateId = 'modern', isDemo = false) {
+export async function generatePDF(userId, invoiceData, businessProfile, templateId = 'modern', isDemo = false) {
     const resolvedProfile = {
         ...businessProfile,
         includeBankDetails: invoiceData.includeBankDetails ?? businessProfile?.includeBankDetails,
@@ -57,36 +58,29 @@ export async function generatePDF(invoiceData, businessProfile, templateId = 'mo
     </body>`);
     }
 
-    const fileName = `invoice-${safeFilePart(invoiceData.number || Date.now())}.pdf`;
-    const pdfDir = path.join(__dirname, '..', '..', config.uploadDir, 'invoices');
-    if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
-    const pdfPath = path.join(pdfDir, fileName);
-
     try {
         const pdfBuffer = await generateBrowserPdf(html);
         validatePdfBuffer(pdfBuffer, 'Invoice PDF');
-        fs.writeFileSync(pdfPath, pdfBuffer);
-        verifySavedPdf(pdfPath, 'Invoice PDF');
+        const stored = await storeInvoicePdf(userId, invoiceData.id, invoiceData.number, pdfBuffer);
 
-        console.log(`[invoice-pdf] saved ${pdfPath} (${pdfBuffer.length} bytes, browser)`);
+        console.log(`[invoice-pdf] saved invoice=${invoiceData.number} (${pdfBuffer.length} bytes, browser)`);
 
         return {
-            pdfUrl: `/uploads/invoices/${fileName}`,
-            pdfPath,
+            pdfUrl: stored.url,
+            storageKey: stored.storageKey,
             buffer: pdfBuffer,
             renderer: 'browser',
         };
     } catch (browserErr) {
         const pdfBuffer = buildFallbackPdf(invoiceData, resolvedProfile, templateId, isDemo);
         validatePdfBuffer(pdfBuffer, 'Invoice PDF fallback');
-        fs.writeFileSync(pdfPath, pdfBuffer);
-        verifySavedPdf(pdfPath, 'Invoice PDF fallback');
+        const stored = await storeInvoicePdf(userId, invoiceData.id, invoiceData.number, pdfBuffer);
 
-        console.warn(`[invoice-pdf] browser renderer failed; saved fallback ${pdfPath} (${pdfBuffer.length} bytes): ${browserErr.message}`);
+        console.warn(`[invoice-pdf] browser renderer failed; saved fallback invoice=${invoiceData.number} (${pdfBuffer.length} bytes): ${browserErr.message}`);
 
         return {
-            pdfUrl: `/uploads/invoices/${fileName}`,
-            pdfPath,
+            pdfUrl: stored.url,
+            storageKey: stored.storageKey,
             buffer: pdfBuffer,
             renderer: 'fallback',
             fallback: true,

@@ -7,6 +7,7 @@ import { AppError, UnauthorizedError, ValidationError } from '../utils/errors.js
 import { validateEmail, validateRequired } from '../utils/validators.js';
 import { transformUser } from '../utils/transformers.js';
 import crypto from 'crypto';
+import { logAuditEvent } from './auditService.js';
 
 const googleClient = new OAuth2Client(config.google.clientId);
 
@@ -51,9 +52,21 @@ export async function signup({ name, email, password }) {
             [user.id]
         );
 
+        await client.query(
+            `INSERT INTO user_auth_identities (user_id, provider, provider_subject, provider_email, metadata)
+             VALUES ($1, 'email', $2, $2, $3::jsonb)
+             ON CONFLICT DO NOTHING`,
+            [user.id, email, JSON.stringify({ source: 'signup' })]
+        );
+
         await client.query('COMMIT');
 
         const token = generateToken({ userId: user.id, email: user.email });
+        await logAuditEvent('auth.signup', {
+            actorUserId: user.id,
+            targetUserId: user.id,
+            metadata: { provider: 'email' },
+        });
         return { user: transformUser({ ...user, business_name: name }), token };
     } catch (err) {
         await client.query('ROLLBACK');
@@ -82,6 +95,11 @@ export async function login({ email, password }) {
     if (!valid) throw new UnauthorizedError('Invalid email or password');
 
     const token = generateToken({ userId: user.id, email: user.email });
+    await logAuditEvent('auth.login', {
+        actorUserId: user.id,
+        targetUserId: user.id,
+        metadata: { provider: 'email' },
+    });
     return { user: transformUser(user), token };
 }
 
@@ -123,6 +141,12 @@ export async function googleAuth({ idToken }) {
                     [picture, user.id]
                 );
             }
+            await client.query(
+                `INSERT INTO user_auth_identities (user_id, provider, provider_subject, provider_email, metadata)
+                 VALUES ($1, 'google', $2, $3, $4::jsonb)
+                 ON CONFLICT DO NOTHING`,
+                [user.id, googleId, email, JSON.stringify({ source: 'google-login' })]
+            );
         } else {
             // Create new user
             const { rows: newRows } = await client.query(
@@ -144,12 +168,23 @@ export async function googleAuth({ idToken }) {
                 `INSERT INTO invoice_sequences (user_id, current_seq) VALUES ($1, 0)`,
                 [user.id]
             );
+            await client.query(
+                `INSERT INTO user_auth_identities (user_id, provider, provider_subject, provider_email, metadata)
+                 VALUES ($1, 'google', $2, $3, $4::jsonb)
+                 ON CONFLICT DO NOTHING`,
+                [user.id, googleId, email, JSON.stringify({ source: 'google-signup' })]
+            );
             user.business_name = name;
         }
 
         await client.query('COMMIT');
 
         const token = generateToken({ userId: user.id, email: user.email });
+        await logAuditEvent('auth.google', {
+            actorUserId: user.id,
+            targetUserId: user.id,
+            metadata: { provider: 'google', linkedExistingUser: rows.length > 0 },
+        });
         return { user: transformUser(user), token };
     } catch (err) {
         await client.query('ROLLBACK');
@@ -168,32 +203,45 @@ export async function forgotPassword({ email }) {
     if (rows.length === 0) return { message: 'If an account exists with this email, a reset link has been sent.' };
 
     const token = crypto.randomBytes(48).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await pool.query(
-        `INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)`,
-        [rows[0].id, token, expiresAt]
+        `INSERT INTO password_resets (user_id, token, token_hash, expires_at) VALUES ($1, $2, $3, $4)`,
+        [rows[0].id, null, tokenHash, expiresAt]
     );
 
-    // In production, send email with reset link: ${config.frontendUrl}/reset-password?token=${token}
-    console.log(`Password reset token for ${email}: ${token}`);
+    await logAuditEvent('auth.password_reset_requested', {
+        actorUserId: rows[0].id,
+        targetUserId: rows[0].id,
+        metadata: { email },
+    });
 
-    return { message: 'If an account exists with this email, a reset link has been sent.', token };
+    const response = { message: 'If an account exists with this email, a reset link has been sent.' };
+    if (config.allowDebugResetTokens && config.nodeEnv !== 'production') {
+        response.previewToken = token;
+    }
+    return response;
 }
 
 export async function resetPassword({ token, newPassword }) {
     validateRequired(['token', 'newPassword'], { token, newPassword });
     if (newPassword.length < 6) throw new ValidationError('Password must be at least 6 characters');
 
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const { rows } = await pool.query(
-        `SELECT * FROM password_resets WHERE token = $1 AND used = false AND expires_at > NOW()`,
-        [token]
+        `SELECT * FROM password_resets WHERE token_hash = $1 AND used = false AND expires_at > NOW()`,
+        [tokenHash]
     );
     if (rows.length === 0) throw new AppError('Invalid or expired reset token', 400);
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, rows[0].user_id]);
     await pool.query('UPDATE password_resets SET used = true WHERE id = $1', [rows[0].id]);
+    await logAuditEvent('auth.password_reset_completed', {
+        actorUserId: rows[0].user_id,
+        targetUserId: rows[0].user_id,
+    });
 
     return { message: 'Password reset successfully. You can now log in.' };
 }

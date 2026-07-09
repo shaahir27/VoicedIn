@@ -1,11 +1,8 @@
 import pool from '../db/pool.js';
 import { transformInvoice } from '../utils/transformers.js';
 import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import config from '../config/index.js';
+import { storeExportArtifact } from './storageService.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const A4_WIDTH = 595;
 const A4_HEIGHT = 842;
 const PAGE_MARGIN = 42;
@@ -64,62 +61,66 @@ export async function exportCSV(userId, filters = {}) {
     const csvWithBom = `\ufeff${csv}\r\n`;
 
     const fileName = `invoices-export-${Date.now()}.csv`;
-    const exportDir = path.join(__dirname, '..', '..', config.uploadDir, 'exports');
-    if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir, { recursive: true });
-    const filePath = path.join(exportDir, fileName);
-    fs.writeFileSync(filePath, csvWithBom, 'utf8');
-    validateCsvBuffer(fs.readFileSync(filePath), headers[0]);
+    const buffer = Buffer.from(csvWithBom, 'utf8');
+    validateCsvBuffer(buffer, headers[0]);
+    const stored = await storeExportArtifact(userId, fileName, buffer);
 
-    logArtifact('CSV', filePath, Buffer.byteLength(csvWithBom, 'utf8'));
+    logArtifact('CSV', stored.filePath || stored.storageKey, buffer.length);
 
-    return { url: `/uploads/exports/${fileName}`, fileName, filePath };
+    return { url: stored.url, fileName: stored.fileName, filePath: stored.filePath, storageKey: stored.storageKey };
 }
 
 export async function exportExcel(userId, filters = {}) {
     const invoices = await getFilteredInvoices(userId, filters);
 
-    const XLSX = await import('xlsx');
-    const wsData = [
-        ['Invoice Number', 'Client', 'Company', 'GST Number', 'Address', 'Date', 'Due Date', 'Status', 'Subtotal', 'Tax', 'Total', 'Paid Date', 'PDF URL'],
-        ...invoices.map(inv => [
-            inv.number,
-            inv.clientName,
-            inv.clientCompanyName || inv.company || '',
-            inv.clientGstNumber || '',
-            inv.clientAddress || '',
-            inv.date,
-            inv.dueDate,
-            inv.status,
-            inv.subtotal,
-            inv.taxTotal,
-            inv.total,
-            inv.paidDate,
-            publicFileUrl(inv.pdfUrl),
-        ]),
+    const ExcelJS = await import('exceljs');
+    const workbook = new ExcelJS.default.Workbook();
+    workbook.creator = 'VoicedIn';
+    workbook.created = new Date();
+    const worksheet = workbook.addWorksheet('Invoices');
+
+    worksheet.columns = [
+        { header: 'Invoice Number', key: 'number', width: 18 },
+        { header: 'Client', key: 'clientName', width: 20 },
+        { header: 'Company', key: 'company', width: 25 },
+        { header: 'GST Number', key: 'gstNumber', width: 14 },
+        { header: 'Address', key: 'address', width: 30 },
+        { header: 'Date', key: 'date', width: 12 },
+        { header: 'Due Date', key: 'dueDate', width: 12 },
+        { header: 'Status', key: 'status', width: 10 },
+        { header: 'Subtotal', key: 'subtotal', width: 12 },
+        { header: 'Tax', key: 'taxTotal', width: 12 },
+        { header: 'Total', key: 'total', width: 12 },
+        { header: 'Paid Date', key: 'paidDate', width: 12 },
+        { header: 'PDF URL', key: 'pdfUrl', width: 48 },
     ];
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-    // Column widths
-    ws['!cols'] = [
-        { wch: 18 }, { wch: 20 }, { wch: 25 }, { wch: 14 }, { wch: 30 },
-        { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
-        { wch: 12 }, { wch: 12 }, { wch: 48 },
-    ];
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
+    worksheet.getRow(1).font = { bold: true };
+    invoices.forEach(inv => {
+        worksheet.addRow({
+            number: inv.number,
+            clientName: inv.clientName,
+            company: inv.clientCompanyName || inv.company || '',
+            gstNumber: inv.clientGstNumber || '',
+            address: inv.clientAddress || '',
+            date: inv.date,
+            dueDate: inv.dueDate,
+            status: inv.status,
+            subtotal: inv.subtotal,
+            taxTotal: inv.taxTotal,
+            total: inv.total,
+            paidDate: inv.paidDate,
+            pdfUrl: publicFileUrl(inv.pdfUrl),
+        });
+    });
 
     const fileName = `invoices-export-${Date.now()}.xlsx`;
-    const exportDir = path.join(__dirname, '..', '..', config.uploadDir, 'exports');
-    if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir, { recursive: true });
-    const filePath = path.join(exportDir, fileName);
-    const xlsxBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
-    fs.writeFileSync(filePath, xlsxBuffer);
+    const xlsxBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const stored = await storeExportArtifact(userId, fileName, xlsxBuffer);
 
-    logArtifact('XLSX', filePath, xlsxBuffer.length);
+    logArtifact('XLSX', stored.filePath || stored.storageKey, xlsxBuffer.length);
 
-    return { url: `/uploads/exports/${fileName}`, fileName, filePath };
+    return { url: stored.url, fileName: stored.fileName, filePath: stored.filePath, storageKey: stored.storageKey };
 }
 
 export async function exportPDF(userId, filters = {}) {
@@ -229,14 +230,11 @@ export async function exportPDF(userId, filters = {}) {
     validatePdfBuffer(pdfBuffer, 'Export PDF');
 
     const fileName = `invoices-export-${Date.now()}.pdf`;
-    const exportDir = path.join(__dirname, '..', '..', config.uploadDir, 'exports');
-    if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir, { recursive: true });
-    const filePath = path.join(exportDir, fileName);
-    fs.writeFileSync(filePath, pdfBuffer);
-    validatePdfBuffer(fs.readFileSync(filePath), 'Saved export PDF');
-    logArtifact('PDF', filePath, pdfBuffer.length, fallbackReason);
+    const stored = await storeExportArtifact(userId, fileName, pdfBuffer);
+    validatePdfBuffer(pdfBuffer, 'Saved export PDF');
+    logArtifact('PDF', stored.filePath || stored.storageKey, pdfBuffer.length, fallbackReason);
 
-    return { url: `/uploads/exports/${fileName}`, fileName, filePath, fallback: Boolean(fallbackReason) };
+    return { url: stored.url, fileName: stored.fileName, filePath: stored.filePath, storageKey: stored.storageKey, fallback: Boolean(fallbackReason) };
 }
 
 async function getFilteredInvoices(userId, filters = {}) {

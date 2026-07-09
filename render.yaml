@@ -23,9 +23,17 @@ services:
       - key: PREMIUM_PAYMENT_PHONE
         value: "7904515049"
       - key: DATABASE_URL
-        fromDatabase:
-          name: voicedin-db
-          property: connectionString
+        sync: false
+      - key: MIGRATION_REQUIRED_VERSION
+        value: 009_enable_rls_on_hardening_tables.sql
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_PUBLIC_BUCKET
+        value: public-assets
+      - key: SUPABASE_STORAGE_PRIVATE_BUCKET
+        value: private-assets
       - key: JWT_SECRET
         generateValue: true
       - key: GOOGLE_CLIENT_ID
@@ -49,7 +57,3 @@ services:
       - type: rewrite
         source: "/*"
         destination: "/index.html"
-
-databases:
-  - name: voicedin-db
-    plan: free

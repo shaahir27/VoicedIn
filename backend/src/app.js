@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import config from './config/index.js';
 import pool from './db/pool.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { ensureSupabaseBuckets, isSupabaseConfigured } from './services/storageService.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -40,20 +41,81 @@ async function healthCheck(req, res) {
         const { rows } = await pool.query(`
             SELECT
               to_regclass('public.users') AS users_table,
-              to_regclass('public.business_profiles') AS business_profiles_table
+              to_regclass('public.business_profiles') AS business_profiles_table,
+              to_regclass('public.clients') AS clients_table,
+              to_regclass('public.invoices') AS invoices_table,
+              to_regclass('public.invoice_items') AS invoice_items_table,
+              to_regclass('public.user_auth_identities') AS user_auth_identities_table,
+              to_regclass('public.audit_log_events') AS audit_log_events_table,
+              to_regclass('public.schema_migrations') AS schema_migrations_table
         `);
-        const schemaReady = Boolean(rows[0]?.users_table && rows[0]?.business_profiles_table);
+        const tableCheck = rows[0] || {};
+        const missingTables = Object.entries(tableCheck)
+            .filter(([, value]) => !value)
+            .map(([key]) => key.replace(/_table$/, ''));
+
+        const { rows: migrationRows } = await pool.query(`
+            SELECT filename
+            FROM schema_migrations
+            ORDER BY filename DESC
+            LIMIT 1
+        `).catch(() => ({ rows: [] }));
+        const latestMigration = migrationRows[0]?.filename || null;
+
+        const { rows: constraintRows } = await pool.query(`
+            SELECT conname
+            FROM pg_constraint
+            WHERE conname IN (
+              'invoice_items_qty_non_negative',
+              'invoices_total_non_negative',
+              'payment_records_amount_non_negative'
+            )
+        `);
+        const constraintNames = new Set(constraintRows.map(row => row.conname));
+        const missingConstraints = [
+            'invoice_items_qty_non_negative',
+            'invoices_total_non_negative',
+            'payment_records_amount_non_negative',
+        ].filter(name => !constraintNames.has(name));
+
+        let storage = { enabled: false, bucketsReady: false };
+        if (isSupabaseConfigured()) {
+            try {
+                storage = await ensureSupabaseBuckets();
+            } catch (storageErr) {
+                storage = {
+                    enabled: true,
+                    bucketsReady: false,
+                    error: storageErr.message,
+                };
+            }
+        }
+
+        const migrationReady = !config.migrationRequiredVersion || latestMigration >= config.migrationRequiredVersion;
+        const storageReady = !storage.enabled || storage.bucketsReady;
+        const schemaReady = missingTables.length === 0 && missingConstraints.length === 0 && migrationReady && storageReady;
 
         if (!schemaReady) {
             return res.status(503).json({
                 status: 'error',
                 database: 'schema_missing',
-                message: 'Database is reachable, but required tables are missing. Run migrations.',
+                message: 'Database is reachable, but required schema objects are missing. Run migrations.',
+                missingTables,
+                missingConstraints,
+                latestMigration,
+                requiredMigration: config.migrationRequiredVersion || null,
+                storage,
                 timestamp: new Date().toISOString(),
             });
         }
 
-        res.json({ status: 'ok', database: 'ok', timestamp: new Date().toISOString() });
+        res.json({
+            status: 'ok',
+            database: 'ok',
+            latestMigration,
+            storage,
+            timestamp: new Date().toISOString(),
+        });
     } catch (err) {
         console.error('Health check failed:', err.message);
         res.status(503).json({

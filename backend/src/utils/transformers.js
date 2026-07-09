@@ -32,7 +32,7 @@ export function transformInvoice(row) {
         includeBankDetails: row.include_bank_details === null || row.include_bank_details === undefined
             ? null
             : Boolean(row.include_bank_details),
-        pdfUrl: row.pdf_url,
+        pdfUrl: row.pdf_storage_key ? `/api/invoices/${row.id}/pdf` : row.pdf_url,
         items: row.items || [],
         createdAt: row.created_at,
     };

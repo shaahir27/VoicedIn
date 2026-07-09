@@ -1,50 +1,15 @@
 import pool from '../db/pool.js';
 import { transformBusinessProfile } from '../utils/transformers.js';
 import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import config from '../config/index.js';
-import fs from 'fs';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-let profileSchemaPromise = null;
-
-function ensureBusinessProfileSchema() {
-    if (!profileSchemaPromise) {
-        profileSchemaPromise = pool.query(`
-            ALTER TABLE business_profiles
-              ADD COLUMN IF NOT EXISTS bank_account_name VARCHAR(255) DEFAULT '',
-              ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255) DEFAULT '',
-              ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(64) DEFAULT '',
-              ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(32) DEFAULT '',
-              ADD COLUMN IF NOT EXISTS bank_upi VARCHAR(255) DEFAULT '',
-              ADD COLUMN IF NOT EXISTS include_bank_details BOOLEAN DEFAULT false
-        `).catch(err => {
-            profileSchemaPromise = null;
-            throw err;
-        });
-    }
-    return profileSchemaPromise;
-}
-
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const logoDir = path.join(__dirname, '..', '..', config.uploadDir, 'logos');
-        fs.mkdirSync(logoDir, { recursive: true });
-        cb(null, logoDir);
-    },
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        cb(null, `logo-${req.user.id}${ext}`);
-    },
-});
+import { uploadBusinessLogo, resolveBusinessLogoUrl } from '../services/storageService.js';
 
 export const logoUpload = multer({
-    storage,
+    storage: multer.memoryStorage(),
     limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
     fileFilter: (req, file, cb) => {
         const allowed = ['.png', '.jpg', '.jpeg', '.svg', '.webp'];
-        const ext = path.extname(file.originalname).toLowerCase();
+        const dotIndex = file.originalname.lastIndexOf('.');
+        const ext = dotIndex >= 0 ? file.originalname.slice(dotIndex).toLowerCase() : '';
         cb(null, allowed.includes(ext));
     },
 }).single('logo');
@@ -55,13 +20,13 @@ export async function getBusinessProfile(req, res, next) {
         if (rows.length === 0) {
             return res.json({ success: true, profile: null });
         }
-        res.json({ success: true, profile: transformBusinessProfile(rows[0]) });
+        const profileRow = await resolveBusinessLogoUrl(rows[0]);
+        res.json({ success: true, profile: transformBusinessProfile(profileRow) });
     } catch (err) { next(err); }
 }
 
 export async function updateBusinessProfile(req, res, next) {
     try {
-        await ensureBusinessProfileSchema();
         const {
             businessName,
             email,
@@ -92,35 +57,37 @@ export async function updateBusinessProfile(req, res, next) {
          bank_account_number = COALESCE($9, business_profiles.bank_account_number),
          bank_ifsc = COALESCE($10, business_profiles.bank_ifsc),
          bank_upi = COALESCE($11, business_profiles.bank_upi),
-         include_bank_details = COALESCE($12, business_profiles.include_bank_details)`,
+             include_bank_details = COALESCE($12, business_profiles.include_bank_details)`,
             [req.user.id, businessName, email, phone, address, website, bankAccountName, bankName, bankAccountNumber, bankIfsc, bankUpi, includeBankDetails]
         );
         const { rows } = await pool.query('SELECT * FROM business_profiles WHERE user_id = $1', [req.user.id]);
-        res.json({ success: true, profile: transformBusinessProfile(rows[0]) });
+        const profileRow = await resolveBusinessLogoUrl(rows[0]);
+        res.json({ success: true, profile: transformBusinessProfile(profileRow) });
     } catch (err) { next(err); }
 }
 
 export async function uploadLogo(req, res, next) {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
-        const logoUrl = `/uploads/logos/${req.file.filename}`;
+        const stored = await uploadBusinessLogo(req.user.id, req.file);
         const { rows } = await pool.query(
-            `INSERT INTO business_profiles (user_id, logo_url)
-             VALUES ($1, $2)
+            `INSERT INTO business_profiles (user_id, logo_url, logo_storage_key)
+             VALUES ($1, $2, $3)
              ON CONFLICT (user_id) DO UPDATE SET logo_url = EXCLUDED.logo_url
+               , logo_storage_key = EXCLUDED.logo_storage_key
              RETURNING *`,
-            [req.user.id, logoUrl]
+            [req.user.id, stored.url, stored.storageKey]
         );
-        res.json({ success: true, logoUrl, profile: transformBusinessProfile(rows[0]) });
+        const profileRow = await resolveBusinessLogoUrl(rows[0]);
+        res.json({ success: true, logoUrl: profileRow.logo_url, profile: transformBusinessProfile(profileRow) });
     } catch (err) { next(err); }
 }
 
 export async function getSettings(req, res, next) {
     try {
-        await ensureBusinessProfileSchema();
         const { rows } = await pool.query('SELECT * FROM business_profiles WHERE user_id = $1', [req.user.id]);
         if (rows.length === 0) return res.json({ success: true, settings: {} });
-        const p = rows[0];
+        const p = await resolveBusinessLogoUrl(rows[0]);
         res.json({
             success: true,
             settings: {
@@ -138,6 +105,7 @@ export async function getSettings(req, res, next) {
                 bankIfsc: p.bank_ifsc || '',
                 bankUpi: p.bank_upi || '',
                 includeBankDetails: Boolean(p.include_bank_details),
+                logoUrl: p.logo_url || null,
             },
         });
     } catch (err) { next(err); }

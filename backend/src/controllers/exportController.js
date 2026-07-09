@@ -1,11 +1,7 @@
 import * as exportService from '../services/exportService.js';
-import path, { dirname } from 'path';
-import config from '../config/index.js';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-import { AppError, NotFoundError } from '../utils/errors.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import path from 'path';
+import { AppError } from '../utils/errors.js';
+import { getExportArtifactBuffer } from '../services/storageService.js';
 
 export async function exportCSV(req, res, next) {
     try {
@@ -40,12 +36,7 @@ export async function downloadExport(req, res, next) {
             throw new AppError('Invalid export filename', 400);
         }
 
-        const filePath = path.join(__dirname, '..', '..', config.uploadDir, 'exports', fileName);
-        if (!fs.existsSync(filePath)) {
-            throw new NotFoundError('Export file');
-        }
-
-        const fileBuffer = fs.readFileSync(filePath);
+        const fileBuffer = await getExportArtifactBuffer(req.user.id, fileName);
         const contentType = contentTypeFor(fileName);
         validateExportBuffer(fileBuffer, fileName);
 

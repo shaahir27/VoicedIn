@@ -4,6 +4,7 @@ import { generatePDF } from '../services/pdfService.js';
 import { transformBusinessProfile } from '../utils/transformers.js';
 import { AppError } from '../utils/errors.js';
 import pool from '../db/pool.js';
+import { resolveBusinessLogoUrl } from '../services/storageService.js';
 
 export async function createInvoice(req, res, next) {
     try {
@@ -74,7 +75,8 @@ export async function generateInvoicePDF(req, res, next) {
     try {
         const invoice = await invoiceService.getInvoice(req.user.id, req.params.id);
         const { rows } = await pool.query('SELECT * FROM business_profiles WHERE user_id = $1', [req.user.id]);
-        const profile = rows.length > 0 ? transformBusinessProfile(rows[0]) : {};
+        const profileRow = rows.length > 0 ? await resolveBusinessLogoUrl(rows[0]) : null;
+        const profile = profileRow ? transformBusinessProfile(profileRow) : {};
         if (req.isDemo) {
             const { rows: countRows } = await pool.query('SELECT COUNT(*) as total FROM invoices WHERE user_id = $1', [req.user.id]);
             if (Number(countRows[0]?.total || 0) > 3) {
@@ -82,11 +84,14 @@ export async function generateInvoicePDF(req, res, next) {
             }
         }
 
-        const result = await generatePDF(invoice, profile, invoice.template, req.isDemo);
+        const result = await generatePDF(req.user.id, invoice, profile, invoice.template, req.isDemo);
 
         // Update invoice pdf_url
-        if (result.pdfUrl) {
-            await pool.query('UPDATE invoices SET pdf_url = $1 WHERE id = $2', [result.pdfUrl, req.params.id]);
+        if (result.pdfUrl || result.storageKey) {
+            await pool.query(
+                'UPDATE invoices SET pdf_url = $1, pdf_storage_key = COALESCE($2, pdf_storage_key) WHERE id = $3',
+                [result.pdfUrl || `/api/invoices/${req.params.id}/pdf`, result.storageKey || null, req.params.id]
+            );
         }
 
         if (!result.buffer) {

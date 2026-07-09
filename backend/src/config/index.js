@@ -21,6 +21,7 @@ const config = {
   port: parseInt(process.env.PORT || '5000', 10),
   nodeEnv,
   databaseUrl: process.env.DATABASE_URL || (nodeEnv === 'production' ? '' : 'postgresql://postgres:postgres@localhost:5432/voicedin'),
+  migrationRequiredVersion: process.env.MIGRATION_REQUIRED_VERSION || '',
   jwt: {
     secret: process.env.JWT_SECRET || 'dev-secret-change-me',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
@@ -42,7 +43,15 @@ const config = {
   },
   frontendUrl,
   frontendUrls,
+  apiPublicUrl: (process.env.API_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, ''),
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
+  allowDebugResetTokens: process.env.ALLOW_DEBUG_RESET_TOKENS === 'true',
+  supabase: {
+    url: process.env.SUPABASE_URL || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    publicBucket: process.env.SUPABASE_STORAGE_PUBLIC_BUCKET || 'public-assets',
+    privateBucket: process.env.SUPABASE_STORAGE_PRIVATE_BUCKET || 'private-assets',
+  },
 };
 
 export default config;

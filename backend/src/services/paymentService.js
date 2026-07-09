@@ -1,6 +1,7 @@
 import pool from '../db/pool.js';
 import { transformPayment } from '../utils/transformers.js';
 import { NotFoundError, ValidationError } from '../utils/errors.js';
+import { logAuditEvent } from './auditService.js';
 
 export async function markAsPaid(userId, invoiceId, { paymentDate, method } = {}) {
     const date = paymentDate || new Date().toISOString().split('T')[0];
@@ -22,7 +23,7 @@ export async function markAsPaid(userId, invoiceId, { paymentDate, method } = {}
 
         // Update invoice status
         await client.query(
-            `UPDATE invoices SET status = 'paid', paid_date = $1, is_draft = false WHERE id = $2`,
+            `UPDATE invoices SET status = 'paid', paid_date = $1, is_draft = false, pdf_url = NULL, pdf_storage_key = NULL WHERE id = $2`,
             [date, invoiceId]
         );
 
@@ -34,6 +35,11 @@ export async function markAsPaid(userId, invoiceId, { paymentDate, method } = {}
         );
 
         await client.query('COMMIT');
+        await logAuditEvent('invoice.marked_paid', {
+            actorUserId: userId,
+            targetUserId: userId,
+            metadata: { invoiceId, amount: Number(invoice.total || 0), method: payMethod },
+        });
         return transformPayment(rows[0]);
     } catch (err) {
         await client.query('ROLLBACK');
@@ -51,12 +57,17 @@ export async function markAsUnpaid(userId, invoiceId) {
     if (rows.length === 0) throw new NotFoundError('Invoice');
 
     await pool.query(
-        `UPDATE invoices SET status = 'unpaid', paid_date = NULL WHERE id = $1`,
+        `UPDATE invoices SET status = 'unpaid', paid_date = NULL, pdf_url = NULL, pdf_storage_key = NULL WHERE id = $1`,
         [invoiceId]
     );
 
     // Remove payment records for this invoice
     await pool.query('DELETE FROM payment_records WHERE invoice_id = $1', [invoiceId]);
+    await logAuditEvent('invoice.marked_unpaid', {
+        actorUserId: userId,
+        targetUserId: userId,
+        metadata: { invoiceId },
+    });
 
     return { success: true };
 }

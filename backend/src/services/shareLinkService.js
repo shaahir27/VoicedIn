@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import pool from '../db/pool.js';
 import { transformInvoice } from '../utils/transformers.js';
 import { NotFoundError, AppError } from '../utils/errors.js';
+import { logAuditEvent } from './auditService.js';
 
 export async function createShareLink(userId, { dateFrom, dateTo, clientId, invoiceId } = {}) {
     if (invoiceId) {
@@ -36,6 +37,11 @@ export async function createShareLink(userId, { dateFrom, dateTo, clientId, invo
      VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING *`,
         [userId, token, dateFrom || null, dateTo || null, clientId || null, invoiceId || null]
     );
+    await logAuditEvent('share_link.created', {
+        actorUserId: userId,
+        targetUserId: userId,
+        metadata: { linkId: rows[0].id, invoiceId: rows[0].invoice_id, clientId: rows[0].client_id },
+    });
 
     return {
         id: rows[0].id,
@@ -134,6 +140,11 @@ export async function revokeShareLink(userId, linkId) {
         [linkId, userId]
     );
     if (rowCount === 0) throw new NotFoundError('Share link');
+    await logAuditEvent('share_link.revoked', {
+        actorUserId: userId,
+        targetUserId: userId,
+        metadata: { linkId },
+    });
     return { success: true };
 }
 

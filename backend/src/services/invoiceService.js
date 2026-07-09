@@ -3,6 +3,7 @@ import { transformInvoice, transformInvoiceItem } from '../utils/transformers.js
 import { NotFoundError, ValidationError, AppError } from '../utils/errors.js';
 import { validateRequired, validateInvoiceItems, validateGST, validateEmail, validatePhone } from '../utils/validators.js';
 import { getNextNumber } from './invoiceNumberService.js';
+import { logAuditEvent } from './auditService.js';
 
 export async function createInvoice(userId, data, isDemo = false) {
     const status = data.isDraft || data.status === 'draft' ? 'draft' : (data.status || 'unpaid');
@@ -163,7 +164,9 @@ export async function updateInvoice(userId, invoiceId, data) {
          terms = COALESCE($15, terms),
          template = COALESCE($16, template),
          is_draft = COALESCE($17, is_draft),
-         include_bank_details = COALESCE($18, include_bank_details)
+          include_bank_details = COALESCE($18, include_bank_details),
+          pdf_url = NULL,
+          pdf_storage_key = NULL
        WHERE id = $19 AND user_id = $20 RETURNING *`,
             [data.clientId, data.clientName, data.company, data.clientCompanyName, data.clientGstNumber, data.clientAddress, data.status, data.date, data.dueDate, data.paidDate, subtotal, taxTotal, total, data.notes, data.terms, data.template, data.isDraft, data.includeBankDetails, invoiceId, userId]
         );
@@ -265,6 +268,11 @@ export async function listInvoices(userId, filters = {}) {
 export async function deleteInvoice(userId, invoiceId) {
     const { rowCount } = await pool.query('DELETE FROM invoices WHERE id = $1 AND user_id = $2', [invoiceId, userId]);
     if (rowCount === 0) throw new NotFoundError('Invoice');
+    await logAuditEvent('invoice.deleted', {
+        actorUserId: userId,
+        targetUserId: userId,
+        metadata: { invoiceId },
+    });
     return { success: true };
 }
 
@@ -282,7 +290,7 @@ export async function updateInvoiceStatus(userId, invoiceId, status) {
     }
 
     const { rows } = await pool.query(
-        `UPDATE invoices SET status = $1, paid_date = $2, is_draft = $3
+        `UPDATE invoices SET status = $1, paid_date = $2, is_draft = $3, pdf_url = NULL, pdf_storage_key = NULL
      WHERE id = $4 AND user_id = $5 RETURNING *`,
         [updates.status, updates.paid_date || null, updates.is_draft || false, invoiceId, userId]
     );
@@ -386,7 +394,7 @@ export async function getLastInvoiceForClient(userId, clientId) {
 // Auto-mark overdue invoices (can be called periodically)
 export async function markOverdueInvoices() {
     await pool.query(
-        `UPDATE invoices SET status = 'overdue'
+        `UPDATE invoices SET status = 'overdue', pdf_url = NULL, pdf_storage_key = NULL
      WHERE status = 'unpaid' AND due_date < CURRENT_DATE AND due_date IS NOT NULL`
     );
 }

@@ -1,10 +1,9 @@
 import pool from '../db/pool.js';
 import { NotFoundError, ValidationError } from '../utils/errors.js';
-import { ensurePremiumPaymentRequestSchema, transformPaymentRequest } from './subscriptionService.js';
+import { transformPaymentRequest } from './subscriptionService.js';
+import { logAuditEvent } from './auditService.js';
 
 export async function listPremiumPaymentRequests(status = 'pending') {
-    await ensurePremiumPaymentRequestSchema();
-
     const params = [];
     let query = `
         SELECT ppr.*, u.name AS user_name, u.email AS user_email
@@ -23,8 +22,6 @@ export async function listPremiumPaymentRequests(status = 'pending') {
 }
 
 export async function approvePremiumPaymentRequest(requestId, approvedBy = 'godmode') {
-    await ensurePremiumPaymentRequestSchema();
-
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -101,6 +98,10 @@ export async function approvePremiumPaymentRequest(requestId, approvedBy = 'godm
         );
 
         await client.query('COMMIT');
+        await logAuditEvent('subscription.payment_request_approved', {
+            targetUserId: request.user_id,
+            metadata: { requestId, approvedBy, amount: Number(request.amount || 0) },
+        });
         return transformPaymentRequest({
             ...approvedRows[0],
             user_email: request.user_email,
@@ -114,8 +115,6 @@ export async function approvePremiumPaymentRequest(requestId, approvedBy = 'godm
 }
 
 export async function rejectPremiumPaymentRequest(requestId, approvedBy = 'godmode') {
-    await ensurePremiumPaymentRequestSchema();
-
     const { rows } = await pool.query(
         `UPDATE premium_payment_requests
          SET status = 'rejected', approved_at = NOW(), approved_by = $2
@@ -124,5 +123,9 @@ export async function rejectPremiumPaymentRequest(requestId, approvedBy = 'godmo
         [requestId, approvedBy]
     );
     if (rows.length === 0) throw new NotFoundError('Pending premium payment request');
+    await logAuditEvent('subscription.payment_request_rejected', {
+        targetUserId: rows[0].user_id,
+        metadata: { requestId, approvedBy },
+    });
     return transformPaymentRequest(rows[0]);
 }
